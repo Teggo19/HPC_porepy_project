@@ -8,7 +8,7 @@ mesh_f = RectangleMesh(Point(0,1), Point(1,2), 16,16)
 
 # BOUNDARY INFORMATION (for imposing bcs)
 n = FacetNormal(mesh_f)
-t = as_vector([-n[1], n[0]])
+tvec = as_vector([-n[1], n[0]])
 def interface(x,on_boundary):
     return near(x[1],1) and on_boundary
 
@@ -98,7 +98,7 @@ for k in range(max_iter):
          - q_f*div(uh_f)*dx
          - inner(f,v_f)*dx
          + inner(neu_f, v_f)*ds(1)
-         + beta*inner(dot(uh_f, t)*t, dot(v_f, t)*t)*ds(2))
+         + beta*inner(dot(uh_f, tvec)*tvec, dot(v_f, tvec)*tvec)*ds(2))
 
     bcu_top = DirichletBC(W.sub(0),Constant((0,0)), "near(x[1],2) && on_boundary")
     bcu_interface_n = DirichletBC(W.sub(0).sub(1), u_d_n, interface)
