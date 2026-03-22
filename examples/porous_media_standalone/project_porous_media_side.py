@@ -42,10 +42,23 @@ class BoundaryAdvectiveFluxExport:
             )
         return data
 
+class PreciceCoupling(pp.PorePyModel):
+    def export_interface_coordinates(self):
+        # Here we need to export the coordinates of the coupling boundary to PreCICE.
+        subdomain=self.mdg.subdomains(dim=self.nd)[0]
+        coupling_boundary=self.domain_boundary_sides(subdomain).north
+        coordinates=subdomain.face_centers[0][coupling_boundary]
+
+        return coordinates
+
+
+
+
 
 class ProjectModel(
     BoundaryAdvectiveFluxExport,
-    ModifiedBC, SinglePhaseFlow
+    ModifiedBC, SinglePhaseFlow,
+    PreciceCoupling,
 ):
     ...
 
@@ -63,4 +76,5 @@ if __name__ == "__main__":
     model=ProjectModel(model_params)
     pp.run_time_dependent_model(model)
     pp.plot_grid(model.mdg, "pressure", figsize=(10, 8), plot_2d=True)
+    print(model.export_interface_coordinates())
 #    pp.plot_grid(model.mdg, "advective_flux_north_boundary", figsize=(10, 8), plot_2d=True)

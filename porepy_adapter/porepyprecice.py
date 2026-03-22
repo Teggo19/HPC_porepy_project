@@ -1,7 +1,7 @@
 import numpy as np
 import precice
 import logging
-from .config import Config
+from config import Config
 import os
 from mpi4py import MPI
 import copy
@@ -15,7 +15,10 @@ class Adapter:
         """
         Constructor for the Adapter class.
         """
-        self._config = Config(os.path.relpath(adapter_config_filename))
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        config_path = os.path.join(base_dir, adapter_config_filename)
+
+        self._config = Config(config_path)
         self._comm = MPI.COMM_WORLD
 
         self._participant = precice.Participant(
@@ -76,3 +79,10 @@ class Adapter:
         pass
 
 
+    def set_mesh_vertices(self, coord):
+
+
+        self._precice_vertex_ids=self._participant.set_mesh_vertices(
+            self._config.get_coupling_mesh_name(),
+            coord,
+        )

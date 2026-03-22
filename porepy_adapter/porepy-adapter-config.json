@@ -1,0 +1,9 @@
+{
+  "participant_name": "PorousMedia",
+  "config_file_name": "../precice-config.xml",
+  "interface": {
+      "coupling_mesh_name": "PorousMedia-Mesh",
+      "write_data_name": "Velocity",
+      "read_data_name": "Force"
+  }
+}
