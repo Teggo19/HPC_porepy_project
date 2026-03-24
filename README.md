@@ -18,3 +18,11 @@ My idea is to first write a very row code that allow us to test the coupling, an
 What seems necessary at this stage is to do the same work that I am doing on the free-flow side but on the porous media participant, writing pseudo-code where the adaptor or precice is needed. Since testing the coupled code will require some time, it is be important that we all try to understand the coupling logic for our case.
 Then we can try inserting some direct precice calls in porepy, and at the same time start to build the adaptor.
 What we can surely do in parallel (among us three) is to write the methods of the Adaptor.
+
+
+## Think about it...
+1. What happens if I write an object from a certain FunctionSpace and I read on another FunctionSPace? They must be equal ore precice internally handles the interpolation?
+    - RMK: preCICE only cares about the values at points and performs the suitable interpolation as defined in the configuration file!
+
+## Resources
+https://github.com/precice/python-bindings/blob/develop/cyprecice/cyprecice.pyx
