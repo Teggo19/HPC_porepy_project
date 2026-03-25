@@ -79,23 +79,22 @@ class BottomBoundary(SubDomain):
 
 
 # DEFINITIONS OF FORMS
-def nonlinear_form(uh, ph, v, q, f, neu_f, beta, tvec):
-    F = (inner(grad(uh)*uh,v)*dx
-        + mu*inner(grad(uh),grad(v))*dx
-        - div(v)*ph*dx
-        - q*div(uh)*dx
-        - inner(f,v)*dx
-        + inner(neu_f, v)*ds(1)
-        + beta*inner(dot(uh, tvec)*tvec, dot(v, tvec)*tvec)*ds(2))
+def nonlinear_form(uh, ph, v, q, neu_f, mu, rho, beta, tvec):
+    F = (inner(grad(uh)*uh,v)*dx \
+        + mu/rho*inner(grad(uh),grad(v))*dx \
+        - 1/rho*div(v)*ph*dx \
+        - 1/rho*q*div(uh)*dx \
+        + 1/rho*inner(neu_f, v)*ds(1) \
+        + 1/rho*beta*inner(dot(uh, tvec)*tvec, dot(v, tvec)*tvec)*ds(2))
+        # - inner(f,v)*dx
     return F
 
-def initialization_problem_forms(u,v,p,q,mu,rho,f, traction):
+def initialization_problem_forms(u,v,p,q,mu,rho, traction):
     # Stokes initialization problem
-    a_stokes = mu*inner(grad(u), grad(v))*dx \
-        - div(v)*p*dx \
-        + q*div(u)*dx
-    L_stokes = rho*inner(f, v)*dx \
-        + inner(traction, v)*ds(1)
+    a_stokes = 1/rho*mu*inner(grad(u), grad(v))*dx \
+        - 1/rho*div(v)*p*dx \
+        + 1/rho*q*div(u)*dx
+    L_stokes = 1/rho*inner(traction, v)*ds(1)
     return a_stokes, L_stokes
 
 ########################################
@@ -114,14 +113,16 @@ P1 = FiniteElement("Lagrange", mesh_f.ufl_cell(), 1)
 TH = P2 * P1
 W = FunctionSpace(mesh_f, TH)     # V x Q
 
-V_n = W.sub(0).sub(1)       # read normal component of velocity --> read_function_space
-Q = W.sub(1)                # write total stress --> write_object
+# V_n = W.sub(0).sub(1)       # read normal component of velocity --> read_function_space
+V_n = FunctionSpace(mesh_f, "CG", 1)
+Q = W.sub(1).collapse()                # write total stress --> write_object
+Qd = FunctionSpace(mesh_f, "DG", 0)  # or "CG", depending on needs
 
 # DATA
 mu = Constant(1)
 rho = Constant(1000)
 f = Constant((0.0, 0.0))
-u_top = Constant((0.0, 0.0))    # noslip
+u_noslip = Constant((0.0, 0.0))    # noslip
 p_left = Expression("1e-9", degree=2)
 traction = Expression(("0", "0.0"), degree=1, t=0)
 K  = Constant(1e-6)
@@ -146,16 +147,25 @@ coupling_expression = precice.create_coupling_expression()
 fenics_dt = Constant(0.05)
 dt = Constant(0)
 precice_dt = precice.get_max_time_step_size()
-dt.assign(min([fenics_dt, precice_dt]))
+# dt.assign(min([fenics_dt, precice_dt]))
+dt = precice_dt
 T = 1.0
 
-bc_top = DirichletBC(W.sub(0), u_top, boundary_top)
+bc_top = DirichletBC(W.sub(0), u_noslip, boundary_top)
 bc_bottom = DirichletBC(W.sub(0).sub(1), coupling_expression, coupling_boundary)
+bc_bottom_stokes = DirichletBC(W.sub(0), u_noslip, coupling_boundary)
 bcs_dir = [bc_top, bc_bottom]
+bcs_stokes = [bc_top, bc_bottom_stokes]
 
+def interface(x,on_boundary):
+    return near(x[1],y_bottom) and on_boundary
+
+def left_f(x,on_boundary):
+    return near(x[0],x_left) and on_boundary
 boundaries = MeshFunction("size_t", mesh_f, mesh_f.topology().dim()-1)
 boundaries.set_all(0)
-AutoSubDomain(boundary_left).mark(boundaries, 1)
+AutoSubDomain(left_f).mark(boundaries, 1)
+AutoSubDomain(interface).mark(boundaries, 2)
 ds = Measure("ds", domain=mesh_f, subdomain_data=boundaries)    # to impose Neumann BCs
 
 # Define variational problem
@@ -166,39 +176,38 @@ ds = Measure("ds", domain=mesh_f, subdomain_data=boundaries)    # to impose Neum
 # INITIALIZATION (STOKES PROBLEM)
 wh_init = Function(W)
 solver = KrylovSolver("gmres", "ilu")
-a_init, L_init = initialization_problem_forms(u,v,p,q,mu,rho,f,traction)
-A_init, b_init = assemble_system(a_init, L_init, bcs_dir)
+a_init, L_init = initialization_problem_forms(u,v,p,q,mu,rho,traction)
+A_init, b_init = assemble_system(a_init, L_init, bcs_stokes)
 solver.set_operator(A_init)
 print("Solving linear system for initialization...")
 solver.solve(wh_init.vector(), b_init)
 print("Initialization done.")
 uh_init, ph_init = wh_init.split(deepcopy=True)
-uh_init.rename("Velocity", "")   # this name will be used in Paraview
-ph_init.rename("Pressure", "")  # this name will be used in Paraview
 
-ufile = File("result/velocity.pvd")
-pfile = File("result/pressure.pvd")
-ufile.write(uh_init)
-pfile.write(ph_init)
+
+# uh_init.rename("Stokes Velocity", "")   # this name will be used in Paraview
+# ph_init.rename("Stokes Pressure", "")  # this name will be used in Paraview
+# ufile_init = File("../output/%s_init_velocity.pvd" % precice.get_participant_name())
+# pfile_init = File("../output/%s_init_pressure.pvd" % precice.get_participant_name())
+# ufile_init.write(uh_init)
+# pfile_init.write(ph_init)
 
 ###################################
 wh = Function(W)
 (uh, ph) = split(wh)
-uh.rename("velocity_fluid")
-ph.rename("pressure_fluid")
 
 # initial guess
 wh.assign(wh_init)
 
 # mark mesh w.r.t ranks
-ranks = File("output/ranks%s.pvd.pvd" % precice.get_participant_name())
+ranks = File("../output/ranks%s.pvd" % precice.get_participant_name())
 mesh_rank = MeshFunction("size_t", mesh_f, mesh_f.topology().dim())
 mesh_rank.set_all(MPI.rank(MPI.comm_world))
 mesh_rank.rename("myRank", "")
 ranks << mesh_rank
 # Create output file
-file_out = File("output/%s_velocity.pvd" % precice.get_participant_name())
-file_out = File("output/%s_pressure.pvd" % precice.get_participant_name())
+ufile = File("../output/%s_velocity.pvd" % precice.get_participant_name())
+pfile = File("../output/%s_pressure.pvd" % precice.get_participant_name())
 
 
 while precice.is_coupling_ongoing():
@@ -216,31 +225,49 @@ while precice.is_coupling_ongoing():
     precice.update_coupling_expression(coupling_expression, read_data)
 
     # Compute solution
-    F = nonlinear_form(uh, ph, v, q, f, neu_f, beta, tvec)
+    F = nonlinear_form(uh, ph, v, q, neu_f, mu, rho, beta, tvec)
+    # params = {
+    # "nonlinear_solver": "newton",
+    # "newton_solver": {
+    #     "relative_tolerance": 1e-6,
+    #     "absolute_tolerance": 1e-10,
+    #     "maximum_iterations": 25
+    # }
+    # }
     print("Solving NS...")
     solve(F==0,wh,bcs=bcs_dir,
           solver_parameters={"nonlinear_solver":"newton"})
     print("...done.")
 
-    # compute total pressure
-    n_const = Constant((0.0,1.0))
+    tt = TestFunction(Q)
+    traction_normal = Function(Q)
     sigma_f = outer(uh, uh) - mu*(grad(uh)+grad(uh).T) + ph*Identity(2)
-    # tension_normal = Function(Q)
-    tension_normal = project(dot(sigma_f, n_const), Q)
-    tension_normal.set_allow_extrapolation(True)
+    t_form = dot(dot(sigma_f, n), n) * tt * ds(2)
+    assemble(t_form, tensor=traction_normal.vector())
+
+
+    # # compute total pressure
+    # n_const = Constant((0.0,1.0))
+    # sigma_f = outer(uh, uh) - mu*(grad(uh)+grad(uh).T) + ph*Identity(2)
+    # # tension_normal = Function(Q)
+    # tension_normal = project(dot(dot(sigma_f, n_const),n_const), Q)
+    # tension_normal.set_allow_extrapolation(True)
+    # # tension_normal = project(sigma_f, V_n)
 
     # write data
-    precice.write_data(tension_normal)
+    precice.write_data(traction_normal)
 
     precice.advance(dt)
 
     if precice.requires_reading_checkpoint():  # roll back to checkpoint
-        wh_cp = precice.retrieve_checkpoint()
+        wh_cp, _, _ = precice.retrieve_checkpoint()
         wh.assign(wh_cp)
     else:  
         pass
 
-uh.rename("Velocity", "")
-ph.rename("Pressure", "")
+
+uh, ph = wh.split(deepcopy=True)
+uh.rename("Velocity NS", "")
+ph.rename("Pressure NS", "")
 ufile.write(uh)
 pfile.write(ph)

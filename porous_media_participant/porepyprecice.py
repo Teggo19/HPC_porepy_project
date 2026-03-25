@@ -6,7 +6,9 @@ import os
 from mpi4py import MPI
 import copy
 import porepy as pp
-
+from porepy_model import ProjectModel
+import signal
+import sys
 
 class Adapter:
     """
@@ -31,6 +33,16 @@ class Adapter:
 
         self._precice_vertex_ids = None
 
+        self._stop_requested = False
+        signal.signal(signal.SIGINT, self._handle_sigint)
+
+
+    def _handle_sigint(self, signum, frame):
+        print("\nCtrl+C received. Stopping adapter...")
+        self._stop_requested = True
+
+
+
     def read_data(self, dt):
         read_data = self._participant.read_data(
                 self._config.get_coupling_mesh_name(),
@@ -38,33 +50,43 @@ class Adapter:
                 self._precice_vertex_ids,
                 dt)
         
-        return 0.5*read_data[1:] + 0.5*read_data[:-1]
+        print(f"Read pressure from PreCICE: {read_data}")
+        
+        #return 0.5*read_data[1:] + 0.5*read_data[:-1]
+        
         # Here we need to map the read data to the boundary condition for PorePy.
-    
+        return read_data
 
     def write_data(self, write_data):
         
+
         # Here we need to map the data from PorePy to the format required by PreCICE before writing it.
-        write_data_processed = np.concatenate([np.zeros(1), 0.5*write_data[1:] + 0.5*write_data[:-1], np.zeros(1)])
+        
+        #write_data_processed = np.concatenate([np.zeros(1), 0.5*write_data[1:] + 0.5*write_data[:-1], np.zeros(1)])
+
+        write_data_processed = write_data
 
         self._participant.write_data(
             self._config.get_coupling_mesh_name(),
             self._config.get_write_data_name(),
             self._precice_vertex_ids,
             write_data_processed)
+        
+        print(f"Wrote advective flux to PreCICE: {write_data_processed}")
 
 
     def _is_parallel(self):
         return self._comm.Get_size() > 1
 
-    def initialize(self, model):
+    def initialize(self):
         # Here we need to initialize the coupling mesh etc.
-        domain = model.mdg.subdomains(dim=model.nd)[0]
+        tmp_model = self.make_model(north_bc_value=None)
+        tmp_model.set_geometry()
+        face_centers = tmp_model.export_interface_coordinates()
         # Define mesh in preCICE
         self._precice_vertex_ids = self._participant.set_mesh_vertices(
-            self._config.get_coupling_mesh_name(), domain.nodes.T[:, :2]) #(... , Nx2 array of vertex coordinates)
+            self._config.get_coupling_mesh_name(), face_centers) #(... , Nx2 array of vertex coordinates)
         
-        self._precice_vertex_ids = np.unique(domain.face_nodes[:, np.where(model.domain_boundary_sides(domain).north)[0]].nonzero()[0])
 
         if self._participant.requires_mesh_connectivity_for(self._config.get_coupling_mesh_name()):
             # Define a mapping between coupling vertices and their IDs in preCICE
@@ -76,8 +98,15 @@ class Adapter:
 
             #edge_vertex_ids, fenics_edge_ids = get_coupling_boundary_edges(
             #    function_space, coupling_subdomain, self._owned_vertices.get_global_ids(), id_mapping)
+            domain = tmp_model.mdg.subdomains(dim=tmp_model.nd)[0]
+
+            north_faces = np.where(tmp_model.domain_boundary_sides(domain).north)[0]
+
+            edge_vertex_ids = np.array([
+                domain.face_nodes[:, i].nonzero()[0]
+                for i in north_faces
+            ])
             
-            edge_vertex_ids = np.array([domain.face_nodes[:, i].nonzero()[0] for i in range(domain.face_nodes.shape[1])])
 
             # Surface coupling over 1D edges
             self._participant.set_mesh_edges(self._config.get_coupling_mesh_name(), edge_vertex_ids)
@@ -129,3 +158,7 @@ class Adapter:
         # Here we need to update the coupling expression with the new read data.
         pass
 
+    def make_model(self, north_bc_value: np.ndarray):
+        params = {"north_bc_value": north_bc_value}
+        model = ProjectModel(params)
+        return model
