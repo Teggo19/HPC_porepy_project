@@ -14,8 +14,8 @@ class PreciceCoupling:
 
 
         default_params={
-            "meshing_arguments": {"cell_size_x": 0.0625,
-                                        "cell_size_y": 0.0625},
+            #"meshing_arguments": {"cell_size_x": 0.0625,"cell_size_y": 0.0625},
+            "meshing_arguments": {"cell_size_x": 0.025,"cell_size_y": 0.025},
             "material_constants": material_constants,
         }
 
@@ -24,6 +24,16 @@ class PreciceCoupling:
         else:
             params = {**default_params, **params}
 
+        self.model_dt = params.get("model_dt", 1)
+
+        time_manager = pp.TimeManager(
+            schedule=[0, self.model_dt],
+            dt_init=self.model_dt,
+            constant_dt=True,
+        )
+
+        params = {**params, "time_manager": time_manager}
+
         super().__init__(params)
 
 
@@ -31,6 +41,8 @@ class PreciceCoupling:
         value = params.get("north_bc_value")
 
         self.north_bc_value = None if value is None else np.asarray(value, dtype=float)
+
+
 
 
 
@@ -96,7 +108,82 @@ class PreciceCoupling:
         coordinates = subdomain.face_centers[:2, coupling_boundary].T
 
         return coordinates
-    
+
+
+    def export_flux_write_nodes_and_edges(self):
+        sd = self.mdg.subdomains(dim=self.nd)[0]
+        north_faces = np.where(self.domain_boundary_sides(sd).north)[0]
+
+        # PorePy node indices that belong to north boundary faces
+        north_node_ids = np.unique(sd.face_nodes[:, north_faces].nonzero()[0])
+
+        coords = np.asarray(sd.nodes[:2, north_node_ids].T, dtype=float)
+
+        # Map PorePy node index -> local write-mesh vertex number
+        local_index = {node_id: i for i, node_id in enumerate(north_node_ids)}
+
+        # Each north boundary face is an edge between two nodes
+        edges = []
+        for f in north_faces:
+            face_nodes = sd.face_nodes[:, f].nonzero()[0]
+            if len(face_nodes) != 2:
+                raise ValueError(f"Expected 2 nodes on boundary face {f}, got {len(face_nodes)}")
+            n0, n1 = face_nodes
+            edges.append([local_index[n0], local_index[n1]])
+
+        edges = np.asarray(edges, dtype=int)
+        return north_node_ids, coords, edges
+
+
+
+    def get_normalized_flux_on_write_nodes(self) -> np.ndarray:
+        sd = self.mdg.subdomains(dim=self.nd)[0]
+        north_faces = np.where(self.domain_boundary_sides(sd).north)[0]
+
+        # Face-centered normalized flux, one value per north face
+        face_flux = self.advective_flux_north_boundary()
+
+        # North-boundary nodes in left-to-right order
+        north_node_ids, coords, edges = self.export_flux_write_nodes_and_edges()
+        x = coords[:, 0]
+        order = np.argsort(x)
+
+        coords = coords[order]
+        # reorder node ids accordingly
+        ordered_nodes = north_node_ids[order]
+
+        # Build node -> adjacent north-face values
+        adjacency = {nid: [] for nid in ordered_nodes}
+        local_face_nodes = [sd.face_nodes[:, f].nonzero()[0] for f in north_faces]
+
+        for q, face_nodes in zip(face_flux, local_face_nodes):
+            for nid in face_nodes:
+                if nid in adjacency:
+                    adjacency[nid].append(q)
+
+        nodal_flux = np.zeros(len(ordered_nodes), dtype=float)
+        for i, nid in enumerate(ordered_nodes):
+            vals = adjacency[nid]
+            if len(vals) == 0:
+                raise ValueError(f"No adjacent north-face flux found for node {nid}")
+            nodal_flux[i] = np.mean(vals)
+
+        return nodal_flux
+
+    def export_pressure_field(self):
+        step=self.model_dt
+        print(f"Exporting pressure field at time {self.model_dt:.2f} with step {step}")
+        file_name=f"pressure_field_{int(step):03d}"
+        exporter_fixed_name=pp.Exporter(self.mdg,folder_name="output",file_name="pressure_field")
+
+        exporter=pp.Exporter(self.mdg,folder_name="output",file_name=file_name)
+        if self.model_dt==1:
+            exporter0=pp.Exporter(self.mdg,folder_name="output",file_name="pressure_field_000")
+            exporter_fixed_name.write_vtu([self.pressure_variable],time_step=0)
+        exporter_fixed_name.write_vtu([self.pressure_variable],time_step=self.model_dt)
+
+
+
 class ProjectModel(
     PreciceCoupling,
     SinglePhaseFlow,

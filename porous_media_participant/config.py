@@ -42,6 +42,7 @@ class Config:
         self._config_file_name = os.path.join(folder, data["config_file_name"])
         self._participant_name = data["participant_name"]
         self._coupling_mesh_name = data["interface"]["coupling_mesh_name"]
+        self._flux_write_mesh_name= data["interface"]["flux_write_mesh_name"]
 
         try:
             self._write_data_name = data["interface"]["write_data_name"]
@@ -69,3 +70,6 @@ class Config:
 
     def get_write_data_name(self):
         return self._write_data_name
+    
+    def get_flux_write_mesh_name(self):
+        return self._flux_write_mesh_name

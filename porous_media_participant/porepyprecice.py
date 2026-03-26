@@ -158,7 +158,7 @@ class Adapter:
         # Here we need to update the coupling expression with the new read data.
         pass
 
-    def make_model(self, north_bc_value: np.ndarray):
-        params = {"north_bc_value": north_bc_value}
+    def make_model(self, north_bc_value: np.ndarray, model_dt=1):
+        params = {"north_bc_value": north_bc_value, "model_dt": model_dt}
         model = ProjectModel(params)
         return model
