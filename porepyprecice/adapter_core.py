@@ -15,6 +15,16 @@ logger.setLevel(level=logging.INFO)
 # need python 3.12. Possibly add interpreter checks
 type ppFunction = np.array # modify
 
+class CouplingBoundaryType(Enum):
+    """
+    Defines on which boundary we want the coupling.
+    Used in initialization to extract vertex IDs and coords on the coupling boundary.
+    """
+    NORTH = 0
+    SOUTH = 1
+    EAST = 2
+    WEST = 3
+
 class Vertices:
     """
     Vertices class provides a generic skeleton for vertices. A set of vertices has a set of IDs and
@@ -128,49 +138,46 @@ def convert_porepy_to_precice(porepy_function, local_ids):
 
     return np.array(precice_data)
 
-
-# TODO
-def get_porepy_vertices(function_space, coupling_subdomain, dims):
+def get_porepy_vertices(model, coupling_subdomain):
     """
-    Extracts vertices which porepy accesses and which lie on the given coupling domain, from a given
-    function space.
+    Extracts vertices which porepy accesses and which lie on the given coupling domain.
 
     Parameters
-    ----------
-    function_space : FEniCS function space
-        Function space on which the finite element problem definition lives.
-    coupling_subdomain : FEniCS Domain
-        Subdomain consists of only the coupling interface region.
-    dims : int
-        Dimension of problem.
+    
+    model : the pp.Model
+
+    coupling_subdomain : CouplingBoundaryType to select which is the interface (north/south/west/east)
 
     Returns
     -------
-    lids : numpy array
-        Array of local ids of fenics vertices.
-    gids : numpy array
-        Array of global ids of fenics vertices.
-    coords : numpy array
-        The coordinates of fenics vertices in a numpy array [N x D] where
+    ids : numpy array. Array of ids of porepy vertices.
+    coords : numpy array. The coordinates of fenics vertices in a numpy array [N x D] where
         N = number of vertices and D = dimensions of geometry.
     """
 
-    if not issubclass(type(coupling_subdomain), SubDomain):
-        raise Exception("No correct coupling interface defined! Given coupling domain is not of type dolfin Subdomain")
 
-    # Get mesh from FEniCS function space
-    mesh = function_space.mesh()
-
+    # Here we need to export the coordinates of the coupling boundary to PreCICE.
     # Get coordinates and global IDs of all vertices of the mesh  which lie on the coupling boundary.
-    # These vertices include shared (owned + unowned) and non-shared vertices in a parallel setting
-    lids, gids, coords = [], [], []
-    for v in vertices(mesh):
-        if coupling_subdomain.inside(v.point(), True):
-            lids.append(v.index())
-            gids.append(v.global_index())
-            coords.append([v.x(d) for d in range(dims)])
+    subdomain = model.mdg.subdomains(dim = model.nd)[0]
+    coupling_boundary = None
+    # TODO improve the logic, allowing also for multiple subdomains
+    if coupling_subdomain == CouplingBoundaryType.NORTH:
+        coupling_boundary = model.domain_boundary_sides(subdomain).north
+    elif coupling_subdomain == CouplingBoundaryType.SOUTH:
+        coupling_boundary = model.domain_boundary_sides(subdomain).south
+    elif coupling_subdomain == CouplingBoundaryType.WEST:
+        coupling_boundary = model.domain_boundary_sides(subdomain).west
+    elif coupling_subdomain == CouplingBoundaryType.EAST:
+        coupling_boundary = model.domain_boundary_sides(subdomain).east
+    else:
+        raise Exception("Unrecognized CouplingBoundaryType.")
+    
+    ids = ... # TODO
+    coords = subdomain.face_centers[:2, coupling_boundary].T # TODO: currently taking only one column, should take all!!!
+    # coords = grid.face_centers[:, coupling_boundary]
 
-    return np.array(lids), np.array(gids), np.array(coords)
+    return np.array(ids), np.array(coords)
+
 
 # TODO
 def get_coupling_boundary_edges(function_space, coupling_subdomain, ids, id_mapping):

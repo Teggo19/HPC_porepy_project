@@ -1,33 +1,63 @@
-import precice as pc
-from porepyprecice import Adapter
 import porepy as pp
+import precice as pc
+from ..porepyprecice.porepyprecice import Adapter
+from ..porepyprecice.adapter_core import CouplingBoundaryType as cb_type
+from ..examples.main_pm_yuhe import DarcyNorthBCs
 
 
-adapter=Adapter("porepy-adapter-config.json")
-#dt=1
-adapter.initialize()
-#adapter.advance(dt)
-#adapter.finalize()
-step=0
+params = { "permeability": 1e-6,
+           "porosity": 0.4,
+           "n_cells": [16,16],
+           "phys_dim": [1,1],
+           "coupling_boundary": cb_type.NORTH
+        }
 
-while adapter.is_coupling_ongoing():
+model = DarcyNorthBCs(params)
 
-    if adapter.requires_writing_checkpoint():
-        adapter.store_checkpoint()
+# precice initialization
+precice = Adapter("porepy-adapter-config.json")
 
+precice.initialize(model, params["coupling_boundary"], "rw")
 
-    precice_dt = adapter.get_max_time_step()
-    pressure=adapter.read_data(precice_dt)
-    step+=1
-    model=adapter.make_model(north_bc_value=pressure, model_dt=step)
-    pp.run_time_dependent_model(model)
-    model.export_pressure_field()
-    advective_flux=model.advective_flux_north_boundary()
-    adapter.write_data(advective_flux)
-    adapter.advance(precice_dt)
+coupling_expression = precice.create_coupling_expression()
 
-    if adapter.requires_reading_checkpoint():
-        adapter.retrieve_checkpoint()
+# TODO: in FEniCS DirichletBCs are build using create_coupling_expression.
+# Since eveything is dynamic, the Dirichlet b.c. is automatically updated
+# once the coupling expression is updated. Therefore, we:
+# - either ensure that the bc_value used inside the Model class are dynamic
+# - or find, inside the loop, a way to update the Model class object
 
+# dummy dt to let precice start
+dt = precice.get_max_time_step()
 
-adapter.finalize()    
+step = 0
+while precice.is_coupling_ongoing():
+
+    if precice.requires_writing_checkpoint():
+        precice.store_checkpoint()
+
+    # read data
+    read_data = precice.read_data(dt)
+
+    precice.update_coupling_expression(coupling_expression, read_data)
+        
+    # Compute solution
+    print("Solving Darcy...")
+    pp.run_stationary_model(model)
+    print("...done.")
+
+    # compute the flux
+    advective_flux = model.advective_flux_north_boundary()
+
+    # write data
+    precice.write_data(advective_flux)
+
+    # advance
+    precice.advance(dt)
+
+    if precice.requires_reading_checkpoint():
+        precice.retrieve_checkpoint()
+
+model.export_pressure_field()
+
+precice.finalize()    

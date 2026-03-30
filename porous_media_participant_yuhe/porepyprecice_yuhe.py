@@ -1,12 +1,12 @@
 import numpy as np
 import precice
 import logging
-from config import Config
+from HPC_porepy_project.porous_media_participant_yuhe.config import Config
 import os
 from mpi4py import MPI
 import copy
 import porepy as pp
-from porepy_model import ProjectModel
+from HPC_porepy_project.porous_media_participant_yuhe.porepy_model_yuhe import ProjectModel
 import signal
 import sys
 
@@ -18,17 +18,11 @@ class Adapter:
         """
         Constructor for the Adapter class.
         """
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        config_path = os.path.join(base_dir, adapter_config_filename)
-
-        self._config = Config(config_path)
-        self._comm = MPI.COMM_WORLD
+        ...
 
         self._participant = precice.Participant(
             self._config.get_participant_name(),
             self._config.get_config_file_name(),
-            self._comm.Get_rank(),
-            self._comm.Get_size()
         )
 
         self._precice_vertex_ids = None
@@ -40,43 +34,6 @@ class Adapter:
     def _handle_sigint(self, signum, frame):
         print("\nCtrl+C received. Stopping adapter...")
         self._stop_requested = True
-
-
-
-    def read_data(self, dt):
-        read_data = self._participant.read_data(
-                self._config.get_coupling_mesh_name(),
-                self._config.get_read_data_name(),
-                self._precice_vertex_ids,
-                dt)
-        
-        print(f"Read pressure from PreCICE: {read_data}")
-        
-        #return 0.5*read_data[1:] + 0.5*read_data[:-1]
-        
-        # Here we need to map the read data to the boundary condition for PorePy.
-        return read_data
-
-    def write_data(self, write_data):
-        
-
-        # Here we need to map the data from PorePy to the format required by PreCICE before writing it.
-        
-        #write_data_processed = np.concatenate([np.zeros(1), 0.5*write_data[1:] + 0.5*write_data[:-1], np.zeros(1)])
-
-        write_data_processed = write_data
-
-        self._participant.write_data(
-            self._config.get_coupling_mesh_name(),
-            self._config.get_write_data_name(),
-            self._precice_vertex_ids,
-            write_data_processed)
-        
-        print(f"Wrote advective flux to PreCICE: {write_data_processed}")
-
-
-    def _is_parallel(self):
-        return self._comm.Get_size() > 1
 
     def initialize(self):
         # Here we need to initialize the coupling mesh etc.
@@ -121,42 +78,13 @@ class Adapter:
 
         self._participant.initialize()
 
-    def advance(self, dt):
-        return self._participant.advance(dt)
-
-    def finalize(self):
-        self._participant.finalize()
-
-    def get_max_time_step(self):
-        return self._participant.get_max_time_step_size()
-
-    def requires_writing_checkpoint(self):
-        return self._participant.requires_writing_checkpoint()
-
-    def requires_reading_checkpoint(self):
-        return self._participant.requires_reading_checkpoint()
-    
-    def retrieve_checkpoint(self):
-        pass
-
-    def store_checkpoint(self, ):
-        pass
 
 
     def set_mesh_vertices(self, coord):
-
-
         self._precice_vertex_ids=self._participant.set_mesh_vertices(
             self._config.get_coupling_mesh_name(),
             coord,
         )
-    
-    def is_coupling_ongoing(self):
-        return self._participant.is_coupling_ongoing()
-    
-    def update_coupling_expression(self, coupling_expression, read_data):
-        # Here we need to update the coupling expression with the new read data.
-        pass
 
     def make_model(self, north_bc_value: np.ndarray, model_dt=1):
         params = {"north_bc_value": north_bc_value, "model_dt": model_dt}
