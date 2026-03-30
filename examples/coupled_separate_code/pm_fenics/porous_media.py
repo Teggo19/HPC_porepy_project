@@ -123,12 +123,8 @@ precice.initialize(coupling_boundary, read_function_space=P, write_object=Vd_n)
 # Create a FEniCS Expression to define and control the coupling boundary values
 coupling_expression = precice.create_coupling_expression()
 
-# Appropriate dt
-fenics_dt = Constant(0.05)
-dt = Constant(0)
-precice_dt = precice.get_max_time_step_size()
-# dt.assign(min([fenics_dt, precice_dt]))
-dt = precice_dt
+# dummy dt to let precice start
+dt = precice.get_max_time_step_size()
 T = 1.0
 
 
