@@ -211,7 +211,7 @@ class Adapter:
         w_func = porepy_function.copy()
         # making sure that the PorePy function provided by the user is not directly accessed by the Adapter
         assert (w_func != porepy_function)
-        assert (self._write_function_type == determine_function_type(w_func, self._porepy_dims))
+        # assert (self._write_function_type == determine_function_type(w_func, self._porepy_dims))
 
         # Determine if scalar or vector coupling
         write_function_type = determine_function_type(porepy_function, self._porepy_dims)
@@ -233,7 +233,8 @@ class Adapter:
         )
 
 
-    def initialize(self, model, coupling_subdomain, coupling_type, write_function = None, fixed_boundary=None):
+    # def initialize(self, model, coupling_subdomain, coupling_type, write_function = None, fixed_boundary=None):
+    def initialize(self, model, coupling_subdomain, read_function = None, write_function = None, fixed_boundary=None):
         """
         Initializes the coupling and sets up the mesh where coupling happens in preCICE.
 
@@ -244,13 +245,15 @@ class Adapter:
         coupling_subdomain : Object of Enumerator class CouplingBoundaryType
             Defines the interface which is the physical coupling boundary. # TODO: allow for multiple boundaries, e.g. north && east
         
-        coupling_type : read, write (uni-directional) or read-write (bi-directional)
+        read_function : string. The name of the variable which has to be read from the pp.PorePyModel (e.g. "pressure", "displacement" etc.)
+
+        read_function : string. The name of the pp:PorePyModel variable which has to be written
             
         fixed_boundary : Object of class dolfin.fem.bcs.AutoSubDomain # TODO: understand if we need this
             SubDomain consisting of a fixed boundary of the mesh. For example in FSI cases usually the solid body
             is fixed at one end (fixed end of a flexible beam).
 
-        write_function : required by require_initial_data
+        write_init_function : required by require_initial_data
 
         Returns
         -------
@@ -274,22 +277,30 @@ class Adapter:
         # Check what type of coupling
         # TODO: select which is the read function, e.g. read_function = "pressure", write_function = "flux"
         # Idea: use the same name stored in the PorePy model
-        if coupling_type == "r":
-            assert (self._config.get_read_data_name())
-            print("Participant {} is read-only participant".format(self._config.get_participant_name()))
-            self._coupling_type = CouplingMode.UNI_DIRECTIONAL_WRITE_COUPLING
-            self._read_function_type = determine_function_type(..., self._porepy_dims)
-        elif coupling_type == "w":
-            assert (self._config.get_write_data_name())
-            self._coupling_type = CouplingMode.UNI_DIRECTIONAL_READ_COUPLING
-            self._write_function_type = determine_function_type(..., self._porepy_dims)
-        elif coupling_type == "rw" or "wr":
+        if read_function is not None:
+            self._read_function_type = determine_function_type(model, read_function, self._porepy_dims)
+
+        
+        if write_function is not None:            
+            self._read_function_type = determine_function_type(model, read_function, self._porepy_dims)
+
+        if read_function is not None and write_function is not None:
             assert (self._config.get_read_data_name() and self._config.get_write_data_name())
             self._coupling_type = CouplingMode.BI_DIRECTIONAL_COUPLING
-            self._read_function_type = determine_function_type(..., self._porepy_dims)
-            self._write_function_type = determine_function_type(..., self._porepy_dims)
         else:
-            raise Exception("Invalid coupling type. Please choose: r w or rw")
+            if write_function is not None:
+                assert (self._config.get_write_data_name())
+                print("Participant {} is write-only participant".format(self._config.get_participant_name()))
+                self._write_function_type = determine_function_type(model, write_function, self._porepy_dims)
+            elif read_function is not None:
+                assert (self._config.get_read_data_name())
+                print("Participant {} is read-only participant".format(self._config.get_participant_name()))
+                self._write_function_type = determine_function_type(model, read_function, self._porepy_dims)
+            else:
+                raise ValueError("At least write_function or read_function needed")
+
+            self._coupling_type = CouplingMode.UNI_DIRECTIONAL_WRITE_COUPLING
+
 
         if fixed_boundary:
             self._Dirichlet_Boundary = fixed_boundary

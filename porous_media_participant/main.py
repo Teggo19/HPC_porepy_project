@@ -2,22 +2,25 @@ import porepy as pp
 import precice as pc
 from ..porepyprecice.porepyprecice import Adapter
 from ..porepyprecice.adapter_core import CouplingBoundaryType as cb_type
-from ..examples.main_pm_yuhe import DarcyNorthBCs
+from .ppm_model import *
 
 
-params = { "permeability": 1e-6,
+model_params = { "permeability": 1e-6,
            "porosity": 0.4,
-           "n_cells": [16,16],
-           "phys_dim": [1,1],
-           "coupling_boundary": cb_type.NORTH
+           "n_cells": 16,
+           "sidelength": 1,
+           "grid_type": "simplex", #"cartesian", "tensor_grid"
+           "coupling_boundary": "n", # "nsew", random order is allowed
+           "coupling_value": ... # TODO (possible write_data if needed)
         }
 
-model = DarcyNorthBCs(params)
+model = PorousMediaProblem(model_params)
 
 # precice initialization
 precice = Adapter("porepy-adapter-config.json")
 
-precice.initialize(model, params["coupling_boundary"], "rw")
+precice.initialize(model, model_params["coupling_boundary"], "rw")
+precice.initialize(model, model_params["coupling_boundary"], read_function = "pressure", write_function = "velocity")
 
 coupling_expression = precice.create_coupling_expression()
 
@@ -30,7 +33,7 @@ coupling_expression = precice.create_coupling_expression()
 # dummy dt to let precice start
 dt = precice.get_max_time_step()
 
-step = 0
+
 while precice.is_coupling_ongoing():
 
     if precice.requires_writing_checkpoint():

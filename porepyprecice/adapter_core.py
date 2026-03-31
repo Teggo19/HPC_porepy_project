@@ -13,7 +13,7 @@ logger.setLevel(level=logging.INFO)
 
 # TODO: which type? possibly a numpy array or similar
 # need python 3.12. Possibly add interpreter checks
-type ppFunction = np.array # modify
+type ppFunction = np.array # TODO: Check. For now assume that it is N x dim for vector fields, N x 1 for scalar fields
 
 class CouplingBoundaryType(Enum):
     """
@@ -97,7 +97,7 @@ def determine_function_type(input_obj, dims):
 
 
 # TODO: implement
-def convert_porepy_to_precice(porepy_function, local_ids):
+def convert_porepy_to_precice(porepy_function, ids):
     """
     Convert PorePy boundary data arrays into preCICE-compatible numpy array for all x and y coordinates on the boundary.
     Input is already numeric; map array to IDs.
@@ -105,7 +105,7 @@ def convert_porepy_to_precice(porepy_function, local_ids):
     ----------
     porepy_function : ppFunction
         A PorePy function referring to a physical variable in the problem.
-    local_ids: numpy array
+    ids: numpy array
         Array of indices of vertices on the coupling interface.
 
     Returns
@@ -120,21 +120,24 @@ def convert_porepy_to_precice(porepy_function, local_ids):
 
     precice_data = []
 
-    if porepy_function.function_space().num_sub_spaces() > 0:
-        dims = porepy_function.function_space().num_sub_spaces()
+    ##################### FENICS
+    if porepy_function.shape[0] > 1: ### maybe
+        dims = ... # has to match the main 
         sampled_data = porepy_function.compute_vertex_values().reshape([dims, -1])
     else:
         sampled_data = porepy_function.compute_vertex_values()
 
-    if len(local_ids):
+    if len(ids):
         if porepy_function.function_space().num_sub_spaces() > 0:  # function space is VectorFunctionSpace
-            for lid in local_ids:
-                precice_data.append(sampled_data[:, lid])
+            for id in ids:
+                precice_data.append(sampled_data[:, id])
         else:  # function space is FunctionSpace (scalar)
-            for lid in local_ids:
-                precice_data.append(sampled_data[lid])
+            for id in ids:
+                precice_data.append(sampled_data[id])
     else:
         precice_data = np.array([])
+
+    ####################################
 
     return np.array(precice_data)
 
@@ -154,11 +157,24 @@ def get_porepy_vertices(model, coupling_subdomain):
     coords : numpy array. The coordinates of fenics vertices in a numpy array [N x D] where
         N = number of vertices and D = dimensions of geometry.
     """
+    subdomain = model.mdg.subdomains(dim = model.nd)[0]
+    domain_sides = model.domain_boundary_sides(subdomain)
 
+    side_map = {
+        "n": domain_sides.north,
+        "s": domain_sides.south,
+        "w": domain_sides.west,
+        "e": domain_sides.east,
+    }
+
+    coupling_sides = []
+    for c in coupling_subdomain:
+        coupling_sides += side_map[c]
 
     # Here we need to export the coordinates of the coupling boundary to PreCICE.
     # Get coordinates and global IDs of all vertices of the mesh  which lie on the coupling boundary.
-    subdomain = model.mdg.subdomains(dim = model.nd)[0]
+    # TODO: uniform with the logic used in the constructor (_bc_string) which is also more flexible
+    
     coupling_boundary = None
     # TODO improve the logic, allowing also for multiple subdomains
     if coupling_subdomain == CouplingBoundaryType.NORTH:

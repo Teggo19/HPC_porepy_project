@@ -1,5 +1,5 @@
 import precice as pc
-from porepyprecice import Adapter
+from HPC_porepy_project.porous_media_participant_yuhe.porepyprecice_yuhe import Adapter
 import porepy as pp
 
 

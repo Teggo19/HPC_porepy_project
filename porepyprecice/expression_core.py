@@ -128,12 +128,12 @@ class RBFInterpolationExpression(CouplingExpression):
         if self.is_scalar_valued():
             # single callable
             return Rbf(self._coords[:,0], self._coords[:,1], self._vals)
-        else:
-            # vector: one RBF per component
-            funcs = []
-            for d in range(self._vals.shape[1]):
-                funcs.append(Rbf(self._coords[:,0], self._coords[:,1], self._vals[:,d]))
-            return funcs
+        
+        # else vector: one RBF per component
+        funcs = []
+        for d in range(self._vals.shape[1]):
+            funcs.append(Rbf(self._coords[:,0], self._coords[:,1], self._vals[:,d]))
+        return funcs
 
     def interpolate(self, x):
         if self.is_scalar_valued():
