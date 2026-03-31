@@ -141,7 +141,7 @@ def convert_porepy_to_precice(porepy_function, ids):
 
     return np.array(precice_data)
 
-def get_porepy_vertices(model, coupling_subdomain):
+def get_vertex_coords(model, coupling_subdomain):
     """
     Extracts vertices which porepy accesses and which lie on the given coupling domain.
 
@@ -153,7 +153,6 @@ def get_porepy_vertices(model, coupling_subdomain):
 
     Returns
     -------
-    ids : numpy array. Array of ids of porepy vertices.
     coords : numpy array. The coordinates of fenics vertices in a numpy array [N x D] where
         N = number of vertices and D = dimensions of geometry.
     """
@@ -172,27 +171,10 @@ def get_porepy_vertices(model, coupling_subdomain):
         coupling_sides += side_map[c]
 
     # Here we need to export the coordinates of the coupling boundary to PreCICE.
-    # Get coordinates and global IDs of all vertices of the mesh  which lie on the coupling boundary.
-    # TODO: uniform with the logic used in the constructor (_bc_string) which is also more flexible
     
-    coupling_boundary = None
-    # TODO improve the logic, allowing also for multiple subdomains
-    if coupling_subdomain == CouplingBoundaryType.NORTH:
-        coupling_boundary = model.domain_boundary_sides(subdomain).north
-    elif coupling_subdomain == CouplingBoundaryType.SOUTH:
-        coupling_boundary = model.domain_boundary_sides(subdomain).south
-    elif coupling_subdomain == CouplingBoundaryType.WEST:
-        coupling_boundary = model.domain_boundary_sides(subdomain).west
-    elif coupling_subdomain == CouplingBoundaryType.EAST:
-        coupling_boundary = model.domain_boundary_sides(subdomain).east
-    else:
-        raise Exception("Unrecognized CouplingBoundaryType.")
-    
-    ids = ... # TODO
-    coords = subdomain.face_centers[:2, coupling_boundary].T # TODO: currently taking only one column, should take all!!!
-    # coords = grid.face_centers[:, coupling_boundary]
+    coords = subdomain.face_centers[:2, coupling_sides].T
 
-    return np.array(ids), np.array(coords)
+    return np.array(coords)
 
 
 # TODO
