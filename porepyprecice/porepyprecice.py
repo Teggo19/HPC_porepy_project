@@ -6,7 +6,7 @@ import numpy as np
 from .config import Config
 import logging
 import precice
-from .adapter_core import FunctionType, determine_function_type, convert_porepy_to_precice, get_porepy_vertices, \
+from .adapter_core import FunctionType, determine_function_type, convert_porepy_to_precice, get_vertex_coords, \
     get_coupling_boundary_edges, CouplingMode, Vertices, get_coupling_triangles
 from .expression_core import RBFInterpolationExpression
 from .solverstate import SolverState
@@ -41,20 +41,13 @@ class Adapter:
             self._config.get_config_file_name(),
         )
 
-        ## FEniCS related quantities (possibly substitute with additional PorePy quantities)
-        # self._read_function_space = None  # initialized later
-        # self._write_function_space = None  # initialized later
-        # self._dofmap = None  # initialized later using function space provided by user
-
-        # PorePy grid and geometry
-
         # Boundary grid entities used for coupling
         self._boundary_faces = None
         # indices of boundary faces participating in coupling
         # e.g. extracted via grid.get_boundary_faces()
 
         # preCICE vertex IDs corresponding to coupling points
-        self._porepy_vertices = Vertices()  # initialized later
+        self._vertex_coords = Vertices()  # initialized later
         self._precice_vertex_ids = None
 
         # type of read and write data (scalar or vector)
@@ -184,7 +177,7 @@ class Adapter:
         )
         # Coordinates of coupling vertices
         # In the PorePy adapter these should be stored during mesh initialization
-        coords = self._porepy_vertices.get_coordinates()
+        coords = self._vertex_coords.get_coordinates()
         # Example shape: (N, 2)
 
         # Convert to dictionary: coordinate -> value
@@ -198,7 +191,7 @@ class Adapter:
 
         Parameters
         ----------
-        porepy_function : object
+        porepy_function : np.array
             PorePy representation of the field that should be written to preCICE.
             Typically this will be a grid-based variable defined on boundary faces
             or nodes depending on the coupling configuration.
@@ -235,7 +228,7 @@ class Adapter:
 
 
     # def initialize(self, model, coupling_subdomain, coupling_type, write_function = None, fixed_boundary=None):
-    def initialize(self, model, coupling_subdomain, read_function = None, write_function = None, fixed_boundary=None):
+    def initialize(self, model, coupling_subdomain, read_function = None, write_function = None, write_function_init = None, fixed_boundary=None):
         """
         Initializes the coupling and sets up the mesh where coupling happens in preCICE.
 
@@ -263,9 +256,8 @@ class Adapter:
         """
 
         # Define mesh in preCICE        
-        ids, coords = get_porepy_vertices(model, coupling_subdomain)
-        self._porepy_vertices.set_ids(ids)
-        self._porepy_vertices.set_coordinates(coords)
+        coords = get_vertex_coords(model, coupling_subdomain)
+        self._vertex_coords.set_coordinates(coords)
         _, self._porepy_dims = coords.shape
 
         self._precice_vertex_ids = self._participant.set_mesh_vertices(
@@ -279,31 +271,28 @@ class Adapter:
         # TODO: select which is the read function, e.g. read_function = "pressure", write_function = "flux"
         # Idea: use the same name stored in the PorePy model
         if read_function is not None:
+            assert (self._config.get_read_data_name())
             self._read_function_type = determine_function_type(model, read_function, self._porepy_dims)
-
         
-        if write_function is not None:            
+        if write_function is not None:
+            assert (self._config.get_write_data_name())          
             self._read_function_type = determine_function_type(model, read_function, self._porepy_dims)
 
         if read_function is not None and write_function is not None:
-            assert (self._config.get_read_data_name() and self._config.get_write_data_name())
             self._coupling_type = CouplingMode.BI_DIRECTIONAL_COUPLING
+            print("Participant {} is read-and-write participant".format(self._config.get_participant_name()))
         else:
             if write_function is not None:
-                assert (self._config.get_write_data_name())
                 print("Participant {} is write-only participant".format(self._config.get_participant_name()))
-                self._write_function_type = determine_function_type(model, write_function, self._porepy_dims)
             elif read_function is not None:
-                assert (self._config.get_read_data_name())
                 print("Participant {} is read-only participant".format(self._config.get_participant_name()))
-                self._write_function_type = determine_function_type(model, read_function, self._porepy_dims)
             else:
                 raise ValueError("At least write_function or read_function needed")
 
             self._coupling_type = CouplingMode.UNI_DIRECTIONAL_WRITE_COUPLING
 
 
-        if fixed_boundary:
+        if fixed_boundary: # TODO: check how it works
             self._Dirichlet_Boundary = fixed_boundary
 
         # TODO
@@ -313,7 +302,7 @@ class Adapter:
             id_mapping = {
                 key: value for key,
                 value in zip(
-                    self._porepy_vertices.get_ids(),
+                    self._vertex_coords.get_ids(),
                     self._precice_vertex_ids)}
 
             # TODO
@@ -324,11 +313,10 @@ class Adapter:
             self._participant.set_mesh_edges(self._config.get_coupling_mesh_name(), edge_vertex_ids)
 
         if self._participant.requires_initial_data():
-            if coupling_type == ("w" or "wr" or "rw"):
-                if not write_function:
-                    raise Exception(
-                        "preCICE requires you to write initial data. Please provide a write_function to initialize(...)")
-            self.write_data(write_function)
+            if write_function is None or write_function_init is None:
+                raise Exception(
+                    "preCICE requires you to write initial data. Please provide a write_function to initialize(...)")
+            self.write_data(write_function_init)
 
         self._participant.initialize()
 
