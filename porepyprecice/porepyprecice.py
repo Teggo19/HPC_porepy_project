@@ -11,6 +11,7 @@ from .adapter_core import FunctionType, determine_function_type, convert_porepy_
 from .expression_core import RBFInterpolationExpression
 from .solverstate import SolverState
 from fenics import Function, FunctionSpace
+import porepy as pp
 import copy
 import os
 
@@ -484,3 +485,26 @@ class Adapter:
             True if checkpoint needs to be written, False otherwise.
         """
         return self._participant.requires_reading_checkpoint()
+    
+    def update_bc_conditions(self, model, read_data):
+        def bc_values_pressure(self, bg: pp.BoundaryGrid) -> np.ndarray:
+
+            domain_sides = self.domain_boundary_sides(bg)
+
+            values = np.zeros(bg.num_cells)
+
+            mask = []
+            side_map = {
+                "n": domain_sides.north,
+                "s": domain_sides.south,
+                "w": domain_sides.west,
+                "e": domain_sides.east,
+            }
+            for c in self._bc_string:
+                mask += side_map[c]
+
+            values[mask] = read_data
+
+            return values
+
+        model.bc_values_pressure = bc_values_pressure.__get__(model)
