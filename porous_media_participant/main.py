@@ -16,29 +16,29 @@ model_params = { "permeability": 1e-6,
 
 problem = PorousMediaProblem(model_params)
 problem.model.prepare_simulation()
+
 # precice initialization
 precice = Adapter("porepy-adapter-config.json")
 
-# precice.initialize(model, model_params["coupling_boundary"], "rw")
 precice.initialize(problem.model, model_params["coupling_boundary"], read_function_name = "pressure", write_function_name = "velocity")
 
-coupling_expression = precice.create_coupling_expression()
 
 # TODO: in FEniCS DirichletBCs are build using create_coupling_expression.
 # Since eveything is dynamic, the Dirichlet b.c. is automatically updated
 # once the coupling expression is updated. Therefore, we:
 # - either ensure that the bc_value used inside the Model class are dynamic
 # - or find, inside the loop, a way to update the Model class object
+coupling_expression = precice.create_coupling_expression()
+
 
 # dummy dt to let precice start
-dt = precice.get_max_time_step()
+dt = precice.get_max_time_step_size()
 
 
 while precice.is_coupling_ongoing():
 
     if precice.requires_writing_checkpoint():
-        precice.store_checkpoint()
-
+        precice.store_checkpoint(problem.model.pressure(problem.model.mdg.subdomains()).value(problem.model.equation_system))
     # read data
     read_data = precice.read_data(dt)
 
@@ -51,9 +51,10 @@ while precice.is_coupling_ongoing():
 
     # # compute the flux
     # advective_flux = problem.model.advective_flux_north_boundary()
+    darcy_flux = problem.model.compute_boundary_flux()
 
     # write data
-    precice.write_data(None)
+    precice.write_data(darcy_flux)
 
     # advance
     precice.advance(dt)

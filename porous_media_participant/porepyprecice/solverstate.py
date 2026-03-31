@@ -1,11 +1,14 @@
+import copy
+
+
 class SolverState:
     def __init__(self, payload, t, n):
         """
-        Solver state consists of a payload (either a single fenics.Function or a list of several fenics.Functions), associated time t and the timestep n
+        Solver state consists of a payload (a PorePy), associated time t and the timestep n
 
         Parameters
         ----------
-        payload : A fenics.Function or a list of fenics.Functions
+        payload : A PorePy Function
             Describes the state of the solver.
         t : double
             Time stamp.

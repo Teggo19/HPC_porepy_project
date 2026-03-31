@@ -255,7 +255,6 @@ while precice.is_coupling_ongoing():
     # # tension_normal = project(sigma_f, V_n)
 
     # write data
-    def initialize(self, model, coupling_subdomain, coupling_type, write_function = None, fixed_boundary=None):
     precice.write_data(traction_normal)
 
     precice.advance(dt)

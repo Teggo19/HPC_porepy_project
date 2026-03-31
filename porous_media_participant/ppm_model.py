@@ -68,7 +68,6 @@ class ModifiedBCs(BoundaryConditionsSinglePhaseFlow):
 
         coupling_sides = side_map[self._bc_string[0]]
         for c in self._bc_string[1:]:
-            # coupling_sides += side_map[c]
             coupling_sides.extend(side_map[c])
 
         bc = pp.BoundaryCondition(sd, coupling_sides, "dir")
@@ -87,11 +86,77 @@ class ModifiedBCs(BoundaryConditionsSinglePhaseFlow):
         # values[domain_sides.east] = self.units.convert_units(2, "Pa")
         return values
 
+
+class PostProcessFlux:
+    def compute_boundary_flux(self) -> np.ndarray:
+        """@Adapted by Yuhe's code.
+        Return normalized advective flux on the north boundary as a NumPy array.
+
+        The returned array has the same style as read_data(): a 1D np.ndarray
+        containing one scalar value per north boundary interface entry.
+        """
+
+        subdomains = self.mdg.subdomains(dim = self.nd)
+
+        flux_values = []
+
+        side_map = {
+            "n": domain_sides.north,
+            "s": domain_sides.south,
+            "w": domain_sides.west,
+            "e": domain_sides.east,
+        }
+
+        for sd in subdomains:
+            domain_sides = self.domain_boundary_sides(sd)
+            darcy_flux_time_dependent = self.darcy_flux([sd]).value(self.equation_system)
+
+            coupling_sides = side_map[self._bc_string[0]]
+            for c in self._bc_string[1:]:
+                coupling_sides.extend(side_map[c])
+
+            sd_flux = darcy_flux_time_dependent[coupling_sides] / sd.face_areas[coupling_sides]
+
+            flux_values.append(sd_flux)
+
+        if len(flux_values) == 0:
+            return np.array([], dtype=float)
+
+        return np.concatenate(flux_values).astype(float)
     
+    def interpolate_darcy_flux(self, ):
+        """@Adapted by Trygve's code.
+        Interpolates the Darcy flux at cell centers
+        """
+        domain = self.mdg.subdomains()[0]
+        
+        face_fluxes = self.darcy_flux(self.mdg.subdomains()).value(self.equation_system)
+
+        cell_fluxes = np.zeros((domain.num_cells, 2), dtype=float)
+
+        for cell in range(domain.num_cells):
+            for face in domain.cell_faces[:, cell].nonzero()[0]:
+                normal = domain.face_normals[:2, face]
+                flux = face_fluxes[face]
+                cell_fluxes[cell] += 0.5 * flux * normal
+
+        return cell_fluxes
+
+    def export_darcy_flux(self, file_name):
+        """@Adapted by Trygve's code.
+        Export the Darcy flux at cell centers
+        """
+        darcy_flux = self.interpolate_darcy_flux()
+        exporter = pp.Exporter(self.mdg, file_name=file_name, folder_name="darcy_flux_test")
+        exporter.write_vtu([(self.mdg.subdomains()[0], "darcy_flux", darcy_flux.T)])
+
+
+
 class SinglePhaseFlowGeometryBCs(
     ModifiedGeometry,
     ModifiedBCs,
-    SinglePhaseFlow):
+    SinglePhaseFlow,
+    PostProcessFlux):
     ...
 
 class PorousMediaProblem:
