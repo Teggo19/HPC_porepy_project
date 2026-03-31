@@ -6,14 +6,14 @@ import numpy as np
 from .config import Config
 import logging
 import precice
-from .adapter_core import FunctionType, determine_function_type, convert_porepy_to_precice, get_vertex_coords, \
-    get_coupling_boundary_edges, CouplingMode, Vertices, get_coupling_triangles
+from .adapter_core import convert_porepy_to_precice, get_vertex_coords, \
+    get_coupling_boundary_edges, CouplingMode, get_coupling_triangles
 from .expression_core import RBFInterpolationExpression
 from .solverstate import SolverState
-from fenics import Function, FunctionSpace
 import porepy as pp
 import copy
 import os
+from mpi4py import MPI
 
 logger = logging.getLogger(__name__)
 logger.setLevel(level=logging.INFO)
@@ -35,38 +35,28 @@ class Adapter:
             Name of the JSON adapter configuration file.
         """
         self._config = Config(os.path.relpath(adapter_config_filename))
+        
+        self._comm = MPI.COMM_WORLD
 
         self._participant = precice.Participant(
             self._config.get_participant_name(),
             self._config.get_config_file_name(),
+            self._comm.Get_rank(),
+            self._comm.Get_size()
         )
 
-        # Boundary grid entities used for coupling
-        self._boundary_faces = None
-        # indices of boundary faces participating in coupling
-        # e.g. extracted via grid.get_boundary_faces()
-
-        # preCICE vertex IDs corresponding to coupling points
-        self._vertex_coords = Vertices()  # initialized later
-        self._precice_vertex_ids = None
-
-        # type of read and write data (scalar or vector)
-        self._read_function_type = None
-        self._write_function_type = None
+        # preCICE vertices corresponding to coupling points
+        self._vertex_coords = None
+        self._vertex_ids = None
 
         # interpolation expression (e.g. RBF interpolator)
-        self._my_expression = RBFInterpolationExpression
+        self._my_expression = RBFInterpolationExpression  # TODO remove if not needed
         # self._expression_instance = None # not present in the original code
 
         self._checkpoint = None
 
-        # ============================================================
-        # Boundary condition storage (for FSI-like coupling)
-        # ============================================================
-
-        # PSEUDOCODE:
         # Store boundary condition object or boundary data container
-        self._boundary_condition = None
+        self._boundary_condition = None # TODO not implemented yet. This may be an alternative to CouplingExpression
 
         self._first_advance_done = False
 
@@ -75,7 +65,6 @@ class Adapter:
 
         # spatial dimension of PorePy problem
         self._porepy_dims = None
-        #self._porepy_dims = self._grid.dim
 
 
     def create_coupling_expression(self):
@@ -97,19 +86,11 @@ class Adapter:
         assert self._porepy_dims == 2, "CouplingExpression currently supports only 2D"
 
         # Check that read function type was configured
-        if not (
-            self._read_function_type is FunctionType.SCALAR
-            or self._read_function_type is FunctionType.VECTOR
-        ):
-            raise Exception(
-                "No valid read_function_type provided. Cannot create coupling expression."
-            )
 
         # Create interpolation expression
         coupling_expression = self._my_expression()
 
-        # Inform expression about scalar/vector type
-        coupling_expression.set_function_type(self._read_function_type)
+        # TODO: set_function_type
 
         return coupling_expression
     
@@ -172,16 +153,12 @@ class Adapter:
         read_values = self._participant.read_data(
             self._config.get_coupling_mesh_name(),
             self._config.get_read_data_name(),
-            self._precice_vertex_ids,
+            self._vertex_ids,
             dt,
         )
-        # Coordinates of coupling vertices
-        # In the PorePy adapter these should be stored during mesh initialization
-        coords = self._vertex_coords.get_coordinates()
-        # Example shape: (N, 2)
-
+        
         # Convert to dictionary: coordinate -> value
-        read_data = {tuple(coord): value for coord, value in zip(coords, read_values)}
+        read_data = {tuple(coord): value for coord, value in zip(self._vertex_coords, read_values)}
 
         return read_data # or maybe copy.deepcopy(read_data)
     
@@ -205,12 +182,7 @@ class Adapter:
         w_func = porepy_function.copy()
         # making sure that the PorePy function provided by the user is not directly accessed by the Adapter
         assert (w_func != porepy_function)
-        # assert (self._write_function_type == determine_function_type(w_func, self._porepy_dims))
 
-        # Determine if scalar or vector coupling
-        write_function_type = determine_function_type(porepy_function, self._porepy_dims)
-
-        assert write_function_type in list(FunctionType)
 
         # Convert PorePy representation to preCICE vertex data
         write_data = convert_porepy_to_precice(
@@ -222,13 +194,13 @@ class Adapter:
         self._participant.write_data(
             self._config.get_coupling_mesh_name(),
             self._config.get_write_data_name(),
-            self._precice_vertex_ids,
+            self._vertex_ids,
             write_data
         )
 
 
     # def initialize(self, model, coupling_subdomain, coupling_type, write_function = None, fixed_boundary=None):
-    def initialize(self, model, coupling_subdomain, read_function = None, write_function = None, write_function_init = None, fixed_boundary=None):
+    def initialize(self, model, coupling_subdomain, read_function_name = None, write_function_name = None, write_function_init = None, fixed_boundary=None):
         """
         Initializes the coupling and sets up the mesh where coupling happens in preCICE.
 
@@ -236,12 +208,14 @@ class Adapter:
         ----------
         model : a PorePy Model that implements the porous media problem
 
-        coupling_subdomain : Object of Enumerator class CouplingBoundaryType
-            Defines the interface which is the physical coupling boundary. # TODO: allow for multiple boundaries, e.g. north && east
+        coupling_subdomain : string containig the boundary information "nwes" in any order
+            Defines the interface which is the physical coupling boundary.
         
-        read_function : string. The name of the variable which has to be read from the pp.PorePyModel (e.g. "pressure", "displacement" etc.)
-
-        read_function : string. The name of the pp:PorePyModel variable which has to be written
+        read_function_name : string. The name of the variable which has to be read from the pp.PorePyModel (e.g. "pressure", "displacement" etc.)
+                We may modify this to make some checks
+        
+        write_function_name : string. The name of the pp:PorePyModel variable which has to be written.
+                We may modify this to make some checks
             
         fixed_boundary : Object of class dolfin.fem.bcs.AutoSubDomain # TODO: understand if we need this
             SubDomain consisting of a fixed boundary of the mesh. For example in FSI cases usually the solid body
@@ -256,38 +230,32 @@ class Adapter:
         """
 
         # Define mesh in preCICE        
-        coords = get_vertex_coords(model, coupling_subdomain)
-        self._vertex_coords.set_coordinates(coords)
-        _, self._porepy_dims = coords.shape
+        self._vertex_coords = get_vertex_coords(model, coupling_subdomain)
+        _, self._porepy_dims = self._vertex_coords.shape
 
-        self._precice_vertex_ids = self._participant.set_mesh_vertices(
-            self._config.get_coupling_mesh_name(), coords)
-
+        self._vertex_ids = self._participant.set_mesh_vertices(
+            self._config.get_coupling_mesh_name(), self._vertex_coords)
 
         if self._porepy_dims != self._participant.get_mesh_dimensions(self._config.get_coupling_mesh_name()):
             raise Exception("Dimension of preCICE setup and PorePy do not match")
 
         # Check what type of coupling
-        # TODO: select which is the read function, e.g. read_function = "pressure", write_function = "flux"
-        # Idea: use the same name stored in the PorePy model
-        if read_function is not None:
+        if read_function_name is not None:
             assert (self._config.get_read_data_name())
-            self._read_function_type = determine_function_type(model, read_function, self._porepy_dims)
         
-        if write_function is not None:
+        if write_function_name is not None:
             assert (self._config.get_write_data_name())          
-            self._read_function_type = determine_function_type(model, read_function, self._porepy_dims)
 
-        if read_function is not None and write_function is not None:
+        if read_function_name is not None and write_function_name is not None:
             self._coupling_type = CouplingMode.BI_DIRECTIONAL_COUPLING
             print("Participant {} is read-and-write participant".format(self._config.get_participant_name()))
         else:
-            if write_function is not None:
+            if write_function_name is not None:
                 print("Participant {} is write-only participant".format(self._config.get_participant_name()))
-            elif read_function is not None:
+            elif read_function_name is not None:
                 print("Participant {} is read-only participant".format(self._config.get_participant_name()))
             else:
-                raise ValueError("At least write_function or read_function needed")
+                raise ValueError("At least write_function_name or read_function_name needed")
 
             self._coupling_type = CouplingMode.UNI_DIRECTIONAL_WRITE_COUPLING
 
@@ -298,24 +266,25 @@ class Adapter:
         # TODO
         # Set mesh connectivity information in preCICE to allow nearest-projection mapping
         if self._participant.requires_mesh_connectivity_for(self._config.get_coupling_mesh_name()):
-            # Define a mapping between coupling vertices and their IDs in preCICE
-            id_mapping = {
-                key: value for key,
-                value in zip(
-                    self._vertex_coords.get_ids(),
-                    self._precice_vertex_ids)}
+            raise NotImplementedError("requires_mesh_connectivity_for() not allowed in current implementation.")
+            # # Define a mapping between coupling vertices and their IDs in preCICE
+            # id_mapping = {
+            #     key: value for key,
+            #     value in zip(
+            #         self._vertex_coords.get_ids(),
+            #         self._vertex_ids)}
 
-            # TODO
-            edge_vertex_ids, fenics_edge_ids = get_coupling_boundary_edges(
-                function_space, coupling_subdomain, self._owned_vertices.get_global_ids(), id_mapping) # TODO
+            # # TODO
+            # edge_vertex_ids, fenics_edge_ids = get_coupling_boundary_edges(
+            #     function_space, coupling_subdomain, self._owned_vertices.get_global_ids(), id_mapping) # TODO
 
-            # Surface coupling over 1D edges
-            self._participant.set_mesh_edges(self._config.get_coupling_mesh_name(), edge_vertex_ids)
+            # # Surface coupling over 1D edges
+            # self._participant.set_mesh_edges(self._config.get_coupling_mesh_name(), edge_vertex_ids)
 
         if self._participant.requires_initial_data():
-            if write_function is None or write_function_init is None:
+            if write_function_name is None or write_function_init is None:
                 raise Exception(
-                    "preCICE requires you to write initial data. Please provide a write_function to initialize(...)")
+                    "preCICE requires you to write initial data. Please provide a write_function_init to initialize(...)")
             self.write_data(write_function_init)
 
         self._participant.initialize()

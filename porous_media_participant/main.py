@@ -1,8 +1,8 @@
 import porepy as pp
 import precice as pc
-from ..porepyprecice.porepyprecice import Adapter
-from ..porepyprecice.adapter_core import CouplingBoundaryType as cb_type
-from .ppm_model import *
+from porepyprecice.porepyprecice import Adapter
+from porepyprecice.adapter_core import CouplingBoundaryType as cb_type
+from ppm_model import *
 
 
 model_params = { "permeability": 1e-6,
@@ -14,13 +14,13 @@ model_params = { "permeability": 1e-6,
            "coupling_value": ... # TODO (possible write_data if needed)
         }
 
-model = PorousMediaProblem(model_params)
-
+problem = PorousMediaProblem(model_params)
+problem.model.prepare_simulation()
 # precice initialization
 precice = Adapter("porepy-adapter-config.json")
 
-precice.initialize(model, model_params["coupling_boundary"], "rw")
-precice.initialize(model, model_params["coupling_boundary"], read_function = "pressure", write_function = "velocity")
+# precice.initialize(model, model_params["coupling_boundary"], "rw")
+precice.initialize(problem.model, model_params["coupling_boundary"], read_function_name = "pressure", write_function_name = "velocity")
 
 coupling_expression = precice.create_coupling_expression()
 
@@ -46,14 +46,14 @@ while precice.is_coupling_ongoing():
         
     # Compute solution
     print("Solving Darcy...")
-    pp.run_stationary_model(model)
+    pp.run_stationary_model(problem.model)
     print("...done.")
 
-    # compute the flux
-    advective_flux = model.advective_flux_north_boundary()
+    # # compute the flux
+    # advective_flux = problem.model.advective_flux_north_boundary()
 
     # write data
-    precice.write_data(advective_flux)
+    precice.write_data(None)
 
     # advance
     precice.advance(dt)
@@ -61,6 +61,6 @@ while precice.is_coupling_ongoing():
     if precice.requires_reading_checkpoint():
         precice.retrieve_checkpoint()
 
-model.export_pressure_field()
+# model.export_pressure_field()
 
 precice.finalize()    

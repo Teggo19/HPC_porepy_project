@@ -68,32 +68,33 @@ class CouplingMode(Enum):
     UNI_DIRECTIONAL_READ_COUPLING = 6
 
 
-# TODO: implementation needed
-def determine_function_type(input_obj, dims):
-    """
-    Determines if the function is scalar- or vector-valued based on rank evaluation.
+# # TODO: implementation needed
+# def determine_function_type(input_obj, dims):
+#     """
+#     Determines if the function is scalar- or vector-valued based on rank evaluation.
 
-    Parameters
-    ----------
-    input_obj : ppFunction
-        A PorePy ppFunction object
-    dims : int
-        Dimension of problem.
+#     Parameters
+#     ----------
+#     input_obj : ppFunction
+#         A PorePy ppFunction object
+#     dims : int
+#         Dimension of problem.
 
-    Returns
-    -------
-    tag : bool
-        0 if input_function is SCALAR and 1 if input_function is VECTOR.
-    """
-    assert isinstance(input_obj, ppFunction), "input_obj has to be of type ppFunction"
-    obj_dim = input_obj.shape[0] # TODO: modify depending of ppFunction type
-    if obj_dim == 0:
-        return FunctionType.SCALAR
-    elif obj_dim == 2 or obj_dim == 3:
-        assert obj_dim == dims
-        return FunctionType.VECTOR
-    else:
-        raise Exception("Error determining type of given ppFunction")
+#     Returns
+#     -------
+#     tag : bool
+#         0 if input_function is SCALAR and 1 if input_function is VECTOR.
+#     """
+#     assert isinstance(input_obj, ppFunction), "input_obj has to be of type ppFunction"
+
+#     obj_dim = input_obj.shape[0] # TODO: modify depending of ppFunction type
+#     if obj_dim == 0:
+#         return FunctionType.SCALAR
+#     elif obj_dim == 2 or obj_dim == 3:
+#         assert obj_dim == dims
+#         return FunctionType.VECTOR
+#     else:
+#         raise Exception("Error determining type of given ppFunction")
 
 
 # TODO: implement
@@ -113,7 +114,6 @@ def convert_porepy_to_precice(porepy_function, ids):
     precice_data : array_like
         Array of PorePy function values at each point on the boundary.
     """
-
 
     if not isinstance(porepy_function, ppFunction):
         raise Exception("Cannot handle data type {}".format(type(porepy_function)))
@@ -166,7 +166,11 @@ def get_vertex_coords(model, coupling_subdomain):
         "e": domain_sides.east,
     }
 
+    
+    assert len(coupling_subdomain) != 0, "No boundary specified!"
+
     coupling_sides = []
+    coupling_sides = side_map[coupling_subdomain[0]]
     for c in coupling_subdomain:
         coupling_sides += side_map[c]
 

@@ -19,7 +19,7 @@ class ModifiedGeometry:
 
     def set_domain(self) -> None:
         """Defining a two-dimensional square domain with sidelength self._sidelength."""
-        size = self.units.convert_units(self._sidelength, "m") # TODO: needed? check
+        size = self.units.convert_units(self._sidelength, "m")
         self._domain = nd_cube_domain(2, size) # only dim = 2 is allowed for our implementation
     
     def grid_type(self) -> str:
@@ -64,9 +64,12 @@ class ModifiedBCs(BoundaryConditionsSinglePhaseFlow):
             "e": domain_sides.east,
         }
 
-        coupling_sides = []
-        for c in self._bc_string:
-            coupling_sides += side_map[c]
+        # assert len(self._bc_string != 0), "No boundary specified"
+
+        coupling_sides = side_map[self._bc_string[0]]
+        for c in self._bc_string[1:]:
+            # coupling_sides += side_map[c]
+            coupling_sides.extend(side_map[c])
 
         bc = pp.BoundaryCondition(sd, coupling_sides, "dir")
 
