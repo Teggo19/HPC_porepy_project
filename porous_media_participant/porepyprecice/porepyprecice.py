@@ -116,7 +116,7 @@ class Adapter:
                 data[(x, y)] = [vx, vy]     # vector
         """
 
-        assert self._dims == 2, "CouplingExpression currently supports only 2D"
+        assert self._porepy_dims == 2, "CouplingExpression currently supports only 2D"
 
         if len(data) == 0:
             raise ValueError("Received empty coupling data from preCICE")
@@ -156,6 +156,7 @@ class Adapter:
             self._vertex_ids,
             dt,
         )
+        return read_values
         
         # Convert to dictionary: coordinate -> value
         read_data = {tuple(coord): value for coord, value in zip(self._vertex_coords, read_values)}
@@ -179,17 +180,17 @@ class Adapter:
             or self._coupling_type is CouplingMode.BI_DIRECTIONAL_COUPLING
         ), "Adapter is not configured for writing coupling data"
 
-        w_func = porepy_function.copy()
+        #w_func = porepy_function.copy()
         # making sure that the PorePy function provided by the user is not directly accessed by the Adapter
-        assert (w_func != porepy_function)
+        #assert (w_func != porepy_function)
 
 
         # Convert PorePy representation to preCICE vertex data
-        write_data = convert_porepy_to_precice(
-            porepy_function,
-            self._vertex_ids   # TODO: what vertices here? need to implement this method
-        )
-
+        #write_data = convert_porepy_to_precice(
+        #    porepy_function,
+        #    self._vertex_ids   # TODO: what vertices here? need to implement this method
+        #)
+        write_data = porepy_function.copy() 
         # Send data to preCICE
         self._participant.write_data(
             self._config.get_coupling_mesh_name(),
@@ -450,7 +451,7 @@ class Adapter:
 
             values = np.zeros(bg.num_cells)
 
-            mask = []
+            mask = np.array([False] * bg.num_cells)
             side_map = {
                 "n": domain_sides.north,
                 "s": domain_sides.south,
@@ -458,7 +459,7 @@ class Adapter:
                 "e": domain_sides.east,
             }
             for c in self._bc_string:
-                mask += side_map[c]
+                mask[side_map[c]] = True
 
             values[mask] = read_data
 

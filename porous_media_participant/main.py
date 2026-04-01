@@ -17,6 +17,15 @@ model_params = { "permeability": 1e-6,
 problem = PorousMediaProblem(model_params)
 problem.model.prepare_simulation()
 
+# Keep a persistent solver for the coupling loop.
+# Calling pp.run_stationary_model() each iteration would call
+# prepare_simulation() again and rebuild internal grid-related state.
+solver = (
+    pp.NewtonSolver({})
+    if problem.model._is_nonlinear_problem()
+    else pp.LinearSolver({})
+)
+
 # precice initialization
 precice = Adapter("porepy-adapter-config.json")
 
@@ -28,7 +37,7 @@ precice.initialize(problem.model, model_params["coupling_boundary"], read_functi
 # once the coupling expression is updated. Therefore, we:
 # - either ensure that the bc_value used inside the Model class are dynamic
 # - or find, inside the loop, a way to update the Model class object
-coupling_expression = precice.create_coupling_expression()
+#coupling_expression = precice.create_coupling_expression()
 
 
 # dummy dt to let precice start
@@ -42,11 +51,15 @@ while precice.is_coupling_ongoing():
     # read data
     read_data = precice.read_data(dt)
 
-    precice.update_coupling_expression(coupling_expression, read_data)
+    #precice.update_coupling_expression(coupling_expression, read_data)
+    precice.update_bc_conditions(problem.model, read_data)
         
     # Compute solution
     print("Solving Darcy...")
-    pp.run_stationary_model(problem.model)
+    converged = solver.solve(problem.model)
+    if not converged:
+        raise RuntimeError("PorePy solver did not converge in coupling iteration")
+    #pp.run_stationary_model(problem.model, {})
     print("...done.")
 
     # # compute the flux
@@ -64,4 +77,6 @@ while precice.is_coupling_ongoing():
 
 # model.export_pressure_field()
 
-precice.finalize()    
+precice.finalize() 
+
+problem.model.export_darcy_and_pressure("darcy_and_pressure")

@@ -100,15 +100,16 @@ class PostProcessFlux:
 
         flux_values = []
 
-        side_map = {
-            "n": domain_sides.north,
-            "s": domain_sides.south,
-            "w": domain_sides.west,
-            "e": domain_sides.east,
-        }
+        
 
         for sd in subdomains:
             domain_sides = self.domain_boundary_sides(sd)
+            side_map = {
+                "n": domain_sides.north,
+                "s": domain_sides.south,
+                "w": domain_sides.west,
+                "e": domain_sides.east,
+            }
             darcy_flux_time_dependent = self.darcy_flux([sd]).value(self.equation_system)
 
             coupling_sides = side_map[self._bc_string[0]]
@@ -149,6 +150,11 @@ class PostProcessFlux:
         darcy_flux = self.interpolate_darcy_flux()
         exporter = pp.Exporter(self.mdg, file_name=file_name, folder_name="darcy_flux_test")
         exporter.write_vtu([(self.mdg.subdomains()[0], "darcy_flux", darcy_flux.T)])
+
+    def export_darcy_and_pressure(self, file_name):
+        darcy_flux = self.interpolate_darcy_flux()
+        exporter = pp.Exporter(self.mdg, file_name=file_name, folder_name="darcy_flux_test")
+        exporter.write_vtu([(self.mdg.subdomains()[0], "darcy_flux", darcy_flux.T), self.pressure_variable])
 
 
 

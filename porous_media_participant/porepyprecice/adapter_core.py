@@ -2,7 +2,7 @@
 This module consists of helper functions used in the Adapter class. Names of the functions are self explanatory
 """
 
-from fenics import SubDomain, Point, PointSource, vertices, FunctionSpace, Function, edges, cells
+#from fenics import SubDomain, Point, PointSource, vertices, FunctionSpace, Function, edges, cells
 import numpy as np
 from enum import Enum
 import logging
@@ -114,9 +114,8 @@ def convert_porepy_to_precice(porepy_function, ids):
     precice_data : array_like
         Array of PorePy function values at each point on the boundary.
     """
-
-    if not isinstance(porepy_function, ppFunction):
-        raise Exception("Cannot handle data type {}".format(type(porepy_function)))
+    #if not isinstance(porepy_function, ppFunction):
+    #    raise Exception("Cannot handle data type {}".format(type(porepy_function)))
 
     precice_data = []
 
