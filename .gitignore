@@ -1,0 +1,25 @@
+# Simulation outputs
+*.vtu
+*.pvd
+*.log
+*.pyc
+
+__pycache__/
+*.py[cod]
+
+env/
+venv/
+.env
+
+.vscode/
+.idea/
+
+.DS_Store
+Thumbs.db
+
+*.lock
+
+*.h5
+*.hdf5
+output/
+results/

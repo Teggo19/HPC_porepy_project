@@ -16,9 +16,9 @@ class SolverState:
             Iteration number.
         """
         try:
-            self.payload = payload.copy(deepcopy=True)
+            self.payload = copy.deepcopy(payload)
         except (AttributeError, TypeError):  # AttributeError, if .copy() does not exist; TypeError, if .copy(deepcopy) does not exist. -> Probably a list
-            self.payload = [item.copy(deepcopy=True) for item in payload]
+            self.payload = [copy.deepcopy(item) for item in payload]
 
         self.t = t
         self.n = n
@@ -37,7 +37,7 @@ class SolverState:
             Iteration number.
         """
         try:
-            return self.payload.copy(deepcopy=True), self.t, self.n
+            return copy.deepcopy(self.payload), self.t, self.n # self.payload.copy(deepcopy=True), self.t, self.n
         except (AttributeError, TypeError):  # AttributeError, if .copy() does not exist; TypeError, if .copy(deepcopy) does not exist. -> Probably a list
             return [item.copy(deepcopy=True) for item in self.payload], self.t, self.n
 
