@@ -100,8 +100,6 @@ class PostProcessFlux:
 
         flux_values = []
 
-        
-
         for sd in subdomains:
             domain_sides = self.domain_boundary_sides(sd)
             side_map = {
@@ -143,18 +141,22 @@ class PostProcessFlux:
 
         return cell_fluxes
 
-    def export_darcy_flux(self, file_name):
+    def export_darcy_flux(self, folder = "../output/"):
         """@Adapted by Trygve's code.
         Export the Darcy flux at cell centers
         """
         darcy_flux = self.interpolate_darcy_flux()
-        exporter = pp.Exporter(self.mdg, file_name=file_name, folder_name="darcy_flux_test")
+        exporter = pp.Exporter(self.mdg, "PorousMedia_flux", folder)
         exporter.write_vtu([(self.mdg.subdomains()[0], "darcy_flux", darcy_flux.T)])
 
-    def export_darcy_and_pressure(self, file_name):
+    def export_flux_and_pressure(self, folder = "../output/"):
         darcy_flux = self.interpolate_darcy_flux()
-        exporter = pp.Exporter(self.mdg, file_name=file_name, folder_name="darcy_flux_test")
-        exporter.write_vtu([(self.mdg.subdomains()[0], "darcy_flux", darcy_flux.T), self.pressure_variable])
+
+        exporter = pp.Exporter(self.mdg, "PorousMedia_flux", folder)
+        exporter.write_vtu([(self.mdg.subdomains()[0], "PorousMedia-flux", darcy_flux.T)])
+
+        exporter = pp.Exporter(self.mdg, "PorousMedia_pressure", folder)
+        exporter.write_vtu(self.pressure_variable)
 
 
 
@@ -196,5 +198,9 @@ class PorousMediaProblem:
         model_params["material_constants"] = material_constants
 
         self.model = SinglePhaseFlowGeometryBCs(model_params)
+
+    def get_pressure(self) -> np.ndarray:
+        """Return the pressure solution as a NumPy array."""
+        return self.model.pressure(self.model.mdg.subdomains()).value(self.model.equation_system)
     
     ... # other methods

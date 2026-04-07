@@ -92,8 +92,8 @@ def nonlinear_form(uh, ph, v, q, neu_f, mu, rho, beta, tvec):
 def initialization_problem_forms(u,v,p,q,mu,rho, traction):
     # Stokes initialization problem
     a_stokes = 1/rho*mu*inner(grad(u), grad(v))*dx \
-        - 1/rho*div(v)*p*dx \
-        + 1/rho*q*div(u)*dx
+        + 1/rho*div(v)*p*dx \
+        - 1/rho*q*div(u)*dx
     L_stokes = 1/rho*inner(traction, v)*ds(1)
     return a_stokes, L_stokes
 
@@ -129,7 +129,7 @@ K  = Constant(1e-6)
 alpha_BJS = 1
 beta = alpha_BJS*mu/sqrt(K)
 
-neu_f = Expression(("1e-1", "0.0"), degree=2)   # Neumann b.c. for NS
+neu_f = Expression(("-1e-1", "0.0"), degree=2)   # Neumann b.c. for NS
 
 #########################
 # BOUNDARY CONDITIONS

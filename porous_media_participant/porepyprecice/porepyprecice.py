@@ -6,7 +6,7 @@ import numpy as np
 from .config import Config
 import logging
 import precice
-from .adapter_core import convert_porepy_to_precice, get_vertex_coords, \
+from .adapter_core import get_vertex_coords, \
     get_coupling_boundary_edges, CouplingMode, get_coupling_triangles
 from .expression_core import RBFInterpolationExpression
 from .solverstate import SolverState
@@ -444,7 +444,7 @@ class Adapter:
         """
         return self._participant.requires_reading_checkpoint()
     
-    def update_bc_conditions(self, model, read_data):
+    def update_bcs(self, model, read_data):
         def bc_values_pressure(self, bg: pp.BoundaryGrid) -> np.ndarray:
 
             domain_sides = self.domain_boundary_sides(bg)

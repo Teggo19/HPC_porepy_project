@@ -3,6 +3,8 @@
 *.pvd
 *.log
 *.pyc
+*.series
+*.txt
 
 __pycache__/
 *.py[cod]
