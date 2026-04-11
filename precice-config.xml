@@ -53,11 +53,15 @@
   <coupling-scheme:serial-implicit>
     <time-window-size value="1" />
     <max-time value="1" />
+    <min-iterations value="2" />
     <max-iterations value="30" />
     <participants first="PorousMedia" second="FreeFlow" />
     <exchange data="Velocity" mesh="PorousMedia-mesh" from="PorousMedia" to="FreeFlow" />
     <exchange data="Force" mesh="FreeFlow-mesh" from="FreeFlow" to="PorousMedia" />
-    <relative-convergence-measure limit="1.0e-5" data="Velocity" mesh="PorousMedia-mesh" />
+    <relative-convergence-measure limit="1.0e-6" data="Velocity" mesh="PorousMedia-mesh" />
+    <relative-convergence-measure limit="1.0e-6" data="Force" mesh="FreeFlow-mesh" />
+    <absolute-convergence-measure limit="1.0e-9" data="Velocity" mesh="PorousMedia-mesh" />
+    <absolute-convergence-measure limit="1.0e-9" data="Force" mesh="FreeFlow-mesh" />
     <acceleration:aitken>
       <data mesh="FreeFlow-mesh" name="Force" />
       <initial-relaxation value="0.5" />

@@ -153,7 +153,7 @@ class PostProcessFlux:
         darcy_flux = self.interpolate_darcy_flux()
 
         exporter = pp.Exporter(self.mdg, "PorousMedia_flux", folder)
-        exporter.write_vtu([(self.mdg.subdomains()[0], "PorousMedia-flux", darcy_flux.T)])
+        exporter.write_vtu([(self.mdg.subdomains()[0], "PorousMedia_flux", darcy_flux.T)])
 
         exporter = pp.Exporter(self.mdg, "PorousMedia_pressure", folder)
         exporter.write_vtu(self.pressure_variable)

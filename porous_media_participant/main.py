@@ -1,5 +1,6 @@
 import porepy as pp
 import precice as pc
+
 from porepyprecice.porepyprecice import Adapter
 from porepyprecice.adapter_core import CouplingBoundaryType as cb_type
 from ppm_model import *
@@ -31,12 +32,18 @@ precice = Adapter("porepy-adapter-config.json")
 
 precice.initialize(problem.model, model_params["coupling_boundary"], read_function_name = "pressure", write_function_name = "velocity")
 
-# dummy dt to let precice start
-dt = precice.get_max_time_step_size()
+window_iteration = 0
+pressure_norm_list = []
+prev_pressure = None
 
 while precice.is_coupling_ongoing():
 
+    window_iteration += 1
+    dt = precice.get_max_time_step_size()
+    print(f"[PorousMedia] Coupling iteration {window_iteration}, dt={dt}")
+
     if precice.requires_writing_checkpoint():
+        print("[PorousMedia] Writing checkpoint at start of coupling window")
         precice.store_checkpoint(problem.get_pressure())
     # read data
     read_data = precice.read_data(dt)
@@ -60,9 +67,34 @@ while precice.is_coupling_ongoing():
     # advance
     precice.advance(dt)
 
+    # get the pressure
+    pressure = problem.get_pressure()
+    if window_iteration > 1:
+        pressure_diff = np.linalg.norm(pressure - prev_pressure)
+        pressure_norm_list.append(pressure_diff)
+        print(f"[PorousMedia] Pressure norm difference to previous iteration: {pressure_diff}")
+    prev_pressure = pressure
+
     if precice.requires_reading_checkpoint():
+        print("[PorousMedia] Window not converged, continuing with next implicit iteration")
         precice.retrieve_checkpoint()
+    else:
+        print(f"[PorousMedia] Coupling window converged in {window_iteration} iteration(s)")
+        window_iteration = 0
 
 precice.finalize() 
 
+
+
 problem.model.export_flux_and_pressure()
+
+import matplotlib.pyplot as plt
+# make a log plot of the pressure norm differences
+plt.figure()
+plt.plot(pressure_norm_list)
+plt.yscale("log")
+plt.xlabel("Coupling iteration")
+plt.ylabel("Pressure norm difference to previous iteration")
+plt.title("Convergence of pressure in porous media participant")
+plt.grid()
+plt.show()
