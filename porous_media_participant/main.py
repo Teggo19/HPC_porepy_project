@@ -34,7 +34,9 @@ precice.initialize(problem.model, model_params["coupling_boundary"], read_functi
 
 window_iteration = 0
 pressure_norm_list = []
+flux_norm_list = []
 prev_pressure = None
+prev_flux = None
 
 while precice.is_coupling_ongoing():
 
@@ -68,12 +70,16 @@ while precice.is_coupling_ongoing():
     precice.advance(dt)
 
     # get the pressure
-    pressure = problem.get_pressure()
+    pressure = read_data
+    flux = darcy_flux
     if window_iteration > 1:
         pressure_diff = np.linalg.norm(pressure - prev_pressure)
+        flux_diff = np.linalg.norm(flux - prev_flux)
         pressure_norm_list.append(pressure_diff)
-        print(f"[PorousMedia] Pressure norm difference to previous iteration: {pressure_diff}")
+        flux_norm_list.append(flux_diff)
+        print(f"[PorousMedia] Pressure norm difference to previous iteration: {pressure_diff, flux_diff}")
     prev_pressure = pressure
+    prev_flux = flux
 
     if precice.requires_reading_checkpoint():
         print("[PorousMedia] Window not converged, continuing with next implicit iteration")
@@ -91,10 +97,12 @@ problem.model.export_flux_and_pressure()
 import matplotlib.pyplot as plt
 # make a log plot of the pressure norm differences
 plt.figure()
-plt.plot(pressure_norm_list)
+plt.plot(pressure_norm_list, label="Interface pressure change")
+plt.plot(flux_norm_list, label="Interface flux change")
 plt.yscale("log")
 plt.xlabel("Coupling iteration")
-plt.ylabel("Pressure norm difference to previous iteration")
+plt.ylabel("Norm difference to previous iteration")
 plt.title("Convergence of pressure in porous media participant")
+plt.legend()
 plt.grid()
 plt.show()
