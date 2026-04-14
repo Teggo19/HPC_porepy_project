@@ -55,13 +55,11 @@ docker build -t hpc-porepy-coupled:latest .
 
 ### 2) Run the coupled case
 
-The container entrypoint starts `porous_media_participant` first and then `free_flow_participant`, matching the serial-implicit coupling scheme in `precice-config.xml`.
+The container entrypoint starts `porous_media_participant` first and then `free_flow_participant`.
 
 ```bash
 docker run --rm hpc-porepy-coupled:latest
 ```
-
-If you want to launch the participants manually inside the container for debugging, start the porous-media side first and then the free-flow side.
 
 ### 3) What the container includes
 
@@ -69,7 +67,7 @@ If you want to launch the participants manually inside the container for debuggi
 - Legacy FEniCS/DOLFIN from the archived FEniCS installation route.
 - preCICE runtime package.
 - PorePy installed from source.
-- A run script at `docker/run_coupled.sh` that starts both participants in the correct order.
+- A run script at `docker/run_coupled.sh` that starts both participants.
 
 ### 4) Outputs
 
