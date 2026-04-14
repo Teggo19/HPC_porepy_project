@@ -1,24 +1,26 @@
 import porepy as pp
-import precice as pc
+import matplotlib.pyplot as plt
 
 from porepyprecice.porepyprecice import Adapter
-from porepyprecice.adapter_core import CouplingBoundaryType as cb_type
 from ppm_model import *
 
 
+# definition of the PorePy model
 model_params = { "permeability": 1e-6,
            "porosity": 0.4,
-           "n_cells": 16,
+           "density": 1e3,
+           "viscosity": 1e-6,
+           "n_cells": 32,
            "sidelength": 1,
-           "grid_type": "simplex", #"cartesian", "tensor_grid"
+           "grid_type": "cartesian", #"cartesian", "tensor_grid"
            "coupling_boundary": "n", # "nsew", random order is allowed
-           "coupling_value": ... # TODO (possible write_data if needed)
         }
+
+show_covergence = False
 
 problem = PorousMediaProblem(model_params)
 problem.model.prepare_simulation()
 
-# Keep a persistent solver for the coupling loop.
 # Calling pp.run_stationary_model() each iteration would call
 # prepare_simulation() again and rebuild internal grid-related state.
 solver = (
@@ -30,8 +32,14 @@ solver = (
 # precice initialization
 precice = Adapter("porepy-adapter-config.json")
 
-precice.initialize(problem.model, model_params["coupling_boundary"], read_function_name = "pressure", write_function_name = "velocity")
+precice.initialize(
+    problem.model,
+    model_params["coupling_boundary"],
+    read_function_name = "pressure",
+    write_function_name = "velocity"
+)
 
+# variables to check the convergence of the iterative coupling
 window_iteration = 0
 pressure_norm_list = []
 flux_norm_list = []
@@ -47,20 +55,21 @@ while precice.is_coupling_ongoing():
     if precice.requires_writing_checkpoint():
         print("[PorousMedia] Writing checkpoint at start of coupling window")
         precice.store_checkpoint(problem.get_pressure())
+    
     # read data
     read_data = precice.read_data(dt)
 
     # update the coupling conditions in the porepy model with the read data
     precice.update_bcs(problem.model, read_data)
         
-    # Compute solution
+    # compute solution
     print("Solving Darcy...")
     converged = solver.solve(problem.model)
     if not converged:
         raise RuntimeError("PorePy solver did not converge in coupling iteration")
     print("...done.")
 
-    # # compute the flux
+    # compute the flux (postprocess)
     darcy_flux = problem.model.compute_boundary_flux()
 
     # write data
@@ -91,18 +100,17 @@ while precice.is_coupling_ongoing():
 precice.finalize() 
 
 
-
 problem.model.export_flux_and_pressure()
 
-import matplotlib.pyplot as plt
-# make a log plot of the pressure norm differences
-plt.figure()
-plt.plot(pressure_norm_list, label="Interface pressure change")
-plt.plot(flux_norm_list, label="Interface flux change")
-plt.yscale("log")
-plt.xlabel("Coupling iteration")
-plt.ylabel("Norm difference to previous iteration")
-plt.title("Convergence of pressure in porous media participant")
-plt.legend()
-plt.grid()
-plt.show()
+if show_covergence:
+    # make a log plot of the pressure norm differences
+    plt.figure()
+    plt.plot(pressure_norm_list, label="Interface pressure change")
+    plt.plot(flux_norm_list, label="Interface flux change")
+    plt.yscale("log")
+    plt.xlabel("Coupling iteration")
+    plt.ylabel("Norm difference to previous iteration")
+    plt.title("Convergence of pressure in porous media participant")
+    plt.legend()
+    plt.grid()
+    plt.show()

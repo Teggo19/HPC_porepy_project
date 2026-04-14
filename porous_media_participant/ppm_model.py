@@ -6,6 +6,7 @@ from porepy.models.fluid_mass_balance import BoundaryConditionsSinglePhaseFlow
 from typing import Optional
 
 class ModifiedGeometry:
+    """Adding modified geometry to the default model."""
     
     def __init__(self, model_params, *args, **kwargs):
 
@@ -42,7 +43,8 @@ class ModifiedGeometry:
     
 
 class ModifiedBCs(BoundaryConditionsSinglePhaseFlow):
-    """Adding both geometry and modified boundary conditions to the default model."""
+    """Adding modified boundary conditions to the default model."""
+
     def __init__(self, model_params, *args, **kwargs):
 
         # store parameters
@@ -88,9 +90,10 @@ class ModifiedBCs(BoundaryConditionsSinglePhaseFlow):
 
 
 class PostProcessFlux:
+    """Adding post-process functionalities to the default model."""
+
     def compute_boundary_flux(self) -> np.ndarray:
-        """@Adapted by Yuhe's code.
-        Return normalized advective flux on the north boundary as a NumPy array.
+        """Return normalized advective flux on the north boundary as a NumPy array.
 
         The returned array has the same style as read_data(): a 1D np.ndarray
         containing one scalar value per north boundary interface entry.
@@ -123,10 +126,9 @@ class PostProcessFlux:
 
         return np.concatenate(flux_values).astype(float)
     
-    def interpolate_darcy_flux(self, ):
-        """@Adapted by Trygve's code.
-        Interpolates the Darcy flux at cell centers
-        """
+    def interpolate_darcy_flux(self):
+        """Interpolates the Darcy flux at cell centers."""
+
         domain = self.mdg.subdomains()[0]
         
         face_fluxes = self.darcy_flux(self.mdg.subdomains()).value(self.equation_system)
@@ -142,9 +144,8 @@ class PostProcessFlux:
         return cell_fluxes
 
     def export_darcy_flux(self, folder = "../output/"):
-        """@Adapted by Trygve's code.
-        Export the Darcy flux at cell centers
-        """
+        """Export the Darcy flux at cell centers."""
+
         darcy_flux = self.interpolate_darcy_flux()
         exporter = pp.Exporter(self.mdg, "PorousMedia_flux", folder)
         exporter.write_vtu([(self.mdg.subdomains()[0], "darcy_flux", darcy_flux.T)])
@@ -165,6 +166,7 @@ class SinglePhaseFlowGeometryBCs(
     ModifiedBCs,
     SinglePhaseFlow,
     PostProcessFlux):
+    """The PorePy model constructed using multiple inheritance"""
     ...
 
 class PorousMediaProblem:
@@ -174,7 +176,7 @@ class PorousMediaProblem:
             "permeability": 1e-6,
             "porosity": 0.4,
             "density": 1e3,
-            "viscosity": 1e-3,
+            "viscosity": 1e-6,
         }
 
         p = {**defaults, **model_params}
