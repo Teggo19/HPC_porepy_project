@@ -1,28 +1,77 @@
-# Coupling FEniCS and PorePy using preCICE
-### Stefano Galati, Yuhe Zhang, Trygve Tegnakfsjhvgoaesgof
-### March 2026
+# Coupled Free-Flow and Porous-Media Solver (FEniCS + PorePy + preCICE)
 
-## Code organization
-The directories `free-flow-participant` and `porous-media-participant` will contain the solver code. If we manage to build an `Adapter` class, we may create a separate directory or put it in the porous media one. I propose to keep for now any further code like the ones made by me and Yuhe in `examples`.
+This repository couples two separate physics solvers using preCICE:
 
-## Workflow proposal
-My idea is to first write a very row code that allow us to test the coupling, and then refactor the code moving the coupling logic into an Adaptor class.
-- on the FEniCS side, this means simply writing the NS code and the coupling logic. We already have an adaptor, therefore we have already a nice API ready-to-use. I am working on this now, but in order to debug it I need to test it by coupling it with another code. I think that doing this means also understanding how to use (and what it means to set all the parameters in) the config file. It is a bit confusionary the time-step logic used in all the tutorials of preCICE, since we have a steady-state problem. I will try to test it with another free-flow solver, just to test that the coupling works.
-- the same has to me done on the porous media side. This time, we have two choices: either use the precice functionalities (application case) or build our API into an adaptor. I would suggest starting with the first one and then possibly moving to the second with a refactoring. On the [step-to-step online guide](https://precice.org/couple-your-code-preparing-your-solver.html), there are pseudo-codes that give an idea of the workflow. It is presented in the transient case, and I am trying to understand what changes for us. Still, I think it is useful to always have a look at it while inserting the precice calls into the porous media solver.
-- Currently, for my case I am taking inspiration from the `flow-over-a-heated-plate` tutorial, specifically `solid-fenics`. It is useful for two reasons:
-    - it is a rather simple example showing the workflow presented in the step-by-step guide
-    - gives an idea of the functions we should implement for our adaptor (essentally all the precice calls like `initialize()`, `finalize()`, `write_data()`, `is_coupling_ongoing()`, etc. etc.)
-- When my steady-state code is ready, then it will become a primary reference code for the coupling logic and substitute the plate tutorial, but in the meantime you can also use that as a reference.
+- `free_flow_participant`: free-flow side (FEniCS/DOLFIN), solving a Navier-Stokes-type problem.
+- `porous_media_participant`: porous-medium side (PorePy), solving Darcy flow.
 
-## TODO
-What seems necessary at this stage is to do the same work that I am doing on the free-flow side but on the porous media participant, writing pseudo-code where the adaptor or precice is needed. Since testing the coupled code will require some time, it is be important that we all try to understand the coupling logic for our case.
-Then we can try inserting some direct precice calls in porepy, and at the same time start to build the adaptor.
-What we can surely do in parallel (among us three) is to write the methods of the Adaptor.
+The two participants exchange interface data in a serial-implicit coupling:
 
+- FreeFlow reads `Velocity` and writes `Force`.
+- PorousMedia reads `Force` and writes `Velocity`.
 
-## Think about it...
-1. What happens if I write an object from a certain FunctionSpace and I read on another FunctionSPace? They must be equal ore precice internally handles the interpolation?
-    - RMK: preCICE only cares about the values at points and performs the suitable interpolation as defined in the configuration file!
+The coupling configuration is in `precice-config.xml`.
 
-## Resources
-https://github.com/precice/python-bindings/blob/develop/cyprecice/cyprecice.pyx
+## What the participant codes do
+
+### `free_flow_participant/main.py`
+
+This script:
+
+1. Builds a 2D FEniCS mesh and mixed function space for velocity-pressure.
+2. Initializes coupling through `fenicsprecice.Adapter` using `fenics-adapter-config.json`.
+3. In each coupling iteration:
+   - reads interface data from preCICE,
+   - updates boundary conditions on the coupling boundary,
+   - solves the nonlinear free-flow problem,
+   - computes normal traction on the interface,
+   - writes traction (`Force`) back to preCICE.
+4. Exports final velocity and pressure to `output/`.
+
+### `porous_media_participant/main.py`
+
+This script:
+
+1. Creates a PorePy Darcy model (`PorousMediaProblem` from `ppm_model.py`).
+2. Initializes coupling through the local adapter (`porepyprecice/`) using `porepy-adapter-config.json`.
+3. In each coupling iteration:
+   - reads interface data from preCICE,
+   - updates porous-medium boundary conditions,
+   - solves the Darcy system,
+   - computes boundary Darcy flux,
+   - writes velocity/flux data to preCICE.
+4. Finalizes coupling and exports pressure/flux output.
+
+## Quick run guide with Docker
+
+The project now runs inside a Docker container. The image sets up the FEniCS/DOLFIN stack for `free_flow_participant` and builds PorePy from source for `porous_media_participant`, so you do not need to manage two separate local Python environments.
+
+### 1) Build the image
+
+```bash
+cd /home/trygve/PhD/Precice_Prosjekt/HPC_porepy_project
+docker build -t hpc-porepy-coupled:latest .
+```
+
+### 2) Run the coupled case
+
+The container entrypoint starts `porous_media_participant` first and then `free_flow_participant`, matching the serial-implicit coupling scheme in `precice-config.xml`.
+
+```bash
+docker run --rm hpc-porepy-coupled:latest
+```
+
+If you want to launch the participants manually inside the container for debugging, start the porous-media side first and then the free-flow side.
+
+### 3) What the container includes
+
+- Ubuntu 24.04 base image.
+- Legacy FEniCS/DOLFIN from the archived FEniCS installation route.
+- preCICE runtime package.
+- PorePy installed from source.
+- A run script at `docker/run_coupled.sh` that starts both participants in the correct order.
+
+### 4) Outputs
+
+- Coupling data and exports are written to the existing `output/` and participant-specific preCICE export directories.
+- The scripts still use the same adapter JSON files and `precice-config.xml` inside the container.
