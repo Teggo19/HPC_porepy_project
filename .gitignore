@@ -9,6 +9,9 @@
 gmsh_frac*
 
 __pycache__/
+precice-exports/
+precice-profiling/
+visualization/
 *.py[cod]
 
 env/
