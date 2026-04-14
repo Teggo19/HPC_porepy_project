@@ -5,6 +5,8 @@
 *.pyc
 *.series
 *.txt
+*.msh
+gmsh_frac*
 
 __pycache__/
 *.py[cod]
