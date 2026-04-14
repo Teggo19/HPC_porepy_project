@@ -1,17 +1,14 @@
 """
-FEniCS - preCICE Adapter. API to help users couple FEniCS with other solvers using the preCICE library.
+PorePy - preCICE Adapter. API to help users couple FEniCS with other solvers using the preCICE library.
 :raise ImportError: if PRECICE_ROOT is not defined
 """
 import numpy as np
 from .config import Config
 import logging
 import precice
-from .adapter_core import get_vertex_coords, \
-    get_coupling_boundary_edges, CouplingMode, get_coupling_triangles
-from .expression_core import RBFInterpolationExpression
+from .adapter_core import *
 from .solverstate import SolverState
 import porepy as pp
-import copy
 import os
 from mpi4py import MPI
 
@@ -49,14 +46,7 @@ class Adapter:
         self._vertex_coords = None
         self._vertex_ids = None
 
-        # interpolation expression (e.g. RBF interpolator)
-        self._my_expression = RBFInterpolationExpression  # TODO remove if not needed
-        # self._expression_instance = None # not present in the original code
-
         self._checkpoint = None
-
-        # Store boundary condition object or boundary data container
-        self._boundary_condition = None # TODO not implemented yet. This may be an alternative to CouplingExpression
 
         self._first_advance_done = False
 
@@ -66,69 +56,6 @@ class Adapter:
         # spatial dimension of PorePy problem
         self._porepy_dims = None
 
-
-    def create_coupling_expression(self):
-        """
-        Creates a CouplingExpression object used to interpolate data received
-        from preCICE onto the PorePy boundary.
-
-        In contrast to the FEniCS adapter, this does not create a UserExpression.
-        Instead, it returns a numerical interpolator that can be evaluated at
-        arbitrary coordinates.
-
-        Returns
-        -------
-        coupling_expression : CouplingExpression
-            Instance of an interpolation strategy (e.g. RBFInterpolationExpression).
-        """
-
-        # Ensure 2D case (current interpolator limitation)
-        assert self._porepy_dims == 2, "CouplingExpression currently supports only 2D"
-
-        # Check that read function type was configured
-
-        # Create interpolation expression
-        coupling_expression = self._my_expression()
-
-        # TODO: set_function_type
-
-        return coupling_expression
-    
-
-    def update_coupling_expression(self, coupling_expression, data):
-        """
-        Update the coupling interpolator with new data received from preCICE.
-
-        This function must be called at every coupling time step after reading
-        data from preCICE. The function updates the interpolator used to map
-        point-based coupling data onto the PorePy grid.
-
-        Parameters
-        ----------
-        coupling_expression : CouplingExpression
-            Interpolation object (e.g. RBFInterpolationExpression).
-
-        data : dict
-            Coupling data received from preCICE.
-            Dictionary mapping coordinates -> values:
-
-                data[(x, y)] = value        # scalar
-                data[(x, y)] = [vx, vy]     # vector
-        """
-
-        assert self._porepy_dims == 2, "CouplingExpression currently supports only 2D"
-
-        if len(data) == 0:
-            raise ValueError("Received empty coupling data from preCICE")
-
-        # Convert dictionary to numpy arrays
-        coords = np.array(list(data.keys()), dtype=float)
-        vals = np.array(list(data.values()), dtype=float)
-
-        # Update interpolator
-        coupling_expression.update_boundary_data(vals, coords)
-
-        return
 
     def read_data(self, dt):
         """
@@ -160,7 +87,6 @@ class Adapter:
         
         # Convert to dictionary: coordinate -> value
         read_data = {tuple(coord): value for coord, value in zip(self._vertex_coords, read_values)}
-
         return read_data # or maybe copy.deepcopy(read_data)
     
     def write_data(self, porepy_function):
@@ -180,16 +106,6 @@ class Adapter:
             or self._coupling_type is CouplingMode.BI_DIRECTIONAL_COUPLING
         ), "Adapter is not configured for writing coupling data"
 
-        #w_func = porepy_function.copy()
-        # making sure that the PorePy function provided by the user is not directly accessed by the Adapter
-        #assert (w_func != porepy_function)
-
-
-        # Convert PorePy representation to preCICE vertex data
-        #write_data = convert_porepy_to_precice(
-        #    porepy_function,
-        #    self._vertex_ids   # TODO: what vertices here? need to implement this method
-        #)
         write_data = porepy_function.copy() 
         # Send data to preCICE
         self._participant.write_data(
@@ -268,19 +184,6 @@ class Adapter:
         # Set mesh connectivity information in preCICE to allow nearest-projection mapping
         if self._participant.requires_mesh_connectivity_for(self._config.get_coupling_mesh_name()):
             raise NotImplementedError("requires_mesh_connectivity_for() not allowed in current implementation.")
-            # # Define a mapping between coupling vertices and their IDs in preCICE
-            # id_mapping = {
-            #     key: value for key,
-            #     value in zip(
-            #         self._vertex_coords.get_ids(),
-            #         self._vertex_ids)}
-
-            # # TODO
-            # edge_vertex_ids, fenics_edge_ids = get_coupling_boundary_edges(
-            #     function_space, coupling_subdomain, self._owned_vertices.get_global_ids(), id_mapping) # TODO
-
-            # # Surface coupling over 1D edges
-            # self._participant.set_mesh_edges(self._config.get_coupling_mesh_name(), edge_vertex_ids)
 
         if self._participant.requires_initial_data():
             if write_function_name is None or write_function_init is None:
@@ -289,10 +192,12 @@ class Adapter:
             self.write_data(write_function_init)
 
         self._participant.initialize()
+    
+        return self._participant.get_max_time_step_size()
 
 
 ##############################################
-# From here on everything is unchanged
+# From here on everything is unchanged from the FEniCS adapter.
 
     def store_checkpoint(self, payload, t=None, n=None):
         """

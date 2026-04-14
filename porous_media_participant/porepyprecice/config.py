@@ -1,7 +1,5 @@
 """
-Copied this from the fenics adapter as a start, but we might need to modify it.
-
-This is the configuration module of fenicsadapter
+Copied this from the FEniCS adapter
 """
 
 import json

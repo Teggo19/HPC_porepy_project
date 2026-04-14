@@ -1,3 +1,9 @@
+"""
+Taken from the FEniCS adapter, with minor modifications.
+Module for storing the state of the solver at a given time step.
+The state consists of a payload (a PorePy Function), associated time t and the timestep n.
+"""
+
 import copy
 
 
