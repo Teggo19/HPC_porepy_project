@@ -74,3 +74,5 @@ docker run --rm -v "$PWD/output:/workspace/HPC_porepy_project/output" hpc-porepy
 ### 4) Outputs
 
 - Coupling data and exports are written to the `output/` folder.
+- The outputs can be viewed by using ParaView. Load the FreeFlow_pressure.pvd, FreeFlow_velocity.pvd, PorousMedia_flux.pvd and PorousMedia_pressure.pvd.
+- PS: To use a Glyph filter on the PorousMedia_flux.pvd, a calculator is needed in between. The calculator should do the following computation: iHat*PorousMedia_flux_X +jHat*PorousMedia_flux_Y, then you should be able to use a glyph on the calculator to see the flux as a vector field.
