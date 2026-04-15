@@ -44,12 +44,14 @@ This script:
 
 ## Quick run guide with Docker
 
-The project now runs inside a Docker container. The image sets up the FEniCS/DOLFIN stack for `free_flow_participant` and builds PorePy from source for `porous_media_participant`, so you do not need to manage two separate local Python environments.
+The project now runs inside a Docker container. The image sets up the FEniCS/DOLFIN stack for `free_flow_participant` and builds PorePy from source for `porous_media_participant`, so you do not need to manage two separate local Python environments. The code can also be run by installing Dolfin and Porepy together with precice, and run `main` in both folders, but we believe the use of Docker makes the  process a lot easier.
 
 ### 1) Build the image
+Make sure Docker is installed.
 
 ```bash
-cd /home/trygve/PhD/Precice_Prosjekt/HPC_porepy_project
+git clone https://github.com/Teggo19/HPC_porepy_project.git
+cd HPC_porepy_project
 docker build -t hpc-porepy-coupled:latest .
 ```
 
@@ -58,7 +60,7 @@ docker build -t hpc-porepy-coupled:latest .
 The container entrypoint starts `porous_media_participant` first and then `free_flow_participant`.
 
 ```bash
-docker run --rm hpc-porepy-coupled:latest
+docker run --rm -v "$PWD/output:/workspace/HPC_porepy_project/output" hpc-porepy-coupled:latest
 ```
 
 ### 3) What the container includes
@@ -71,5 +73,5 @@ docker run --rm hpc-porepy-coupled:latest
 
 ### 4) Outputs
 
-- Coupling data and exports are written to the existing `output/` and participant-specific preCICE export directories.
+- Coupling data and exports are written to the `output/` folder and participant-specific.
 - The scripts still use the same adapter JSON files and `precice-config.xml` inside the container.
